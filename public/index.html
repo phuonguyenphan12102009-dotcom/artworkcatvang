@@ -46,7 +46,7 @@
     width: auto;
     height: auto;
     max-width: min(calc(96vw - 24px), 1000px);
-    max-height: calc(100vh - 280px);
+    max-height: calc(100vh - 310px);
     min-height: 220px;
     object-fit: contain;
     transition: filter 0.9s ease;
@@ -76,12 +76,29 @@
     transition: background .2s, color .2s;
   }
   button:hover { background: var(--accent); color: #fff; }
+
+  .note { color: var(--muted); font-size: .85rem; margin: 12px 0 0; min-height: 1.4em; }
+  .cam {
+    position: fixed; right: 14px; bottom: 14px; width: 168px;
+    background: #fffdf8; padding: 5px; border-radius: 6px;
+    box-shadow: 0 6px 24px rgba(80, 60, 30, .25);
+    line-height: 0;
+  }
+  .cam-view { position: relative; width: 100%; aspect-ratio: 4 / 3; transform: scaleX(-1); border-radius: 3px; overflow: hidden; background: #222; }
+  .cam-view video, .cam-view canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .cam-view video { object-fit: fill; }
+  .badge {
+    position: absolute; left: 10px; bottom: 10px;
+    background: rgba(58, 49, 40, .78); color: #fff;
+    font-size: .75rem; line-height: 1; padding: 5px 8px; border-radius: 999px;
+  }
+  @media (max-width: 520px) { .cam { width: 108px; right: 8px; bottom: 8px; } }
   [hidden] { display: none !important; }
 </style>
 </head>
 <body>
   <h1>Bức tranh chỉ hiện rõ khi nhiều người cùng nhìn</h1>
-  <p class="sub">Mỗi người ghé xem sẽ làm bức tranh rõ nét và nhiều màu sắc hơn, không cần phải xem cùng lúc.</p>
+  <p class="sub">Mỗi người đến nhìn vào màn hình sẽ làm bức tranh rõ nét và nhiều màu sắc hơn, không cần nhìn cùng lúc.</p>
 
   <div class="frame">
     <div class="frame-inner">
@@ -96,85 +113,160 @@
     </div>
   </div>
 
-  <!-- Nút reset chỉ hiện khi mở trang với ?admin=<khoá> -->
+  <p class="note" id="msg">Đang bật camera…</p>
+  <button id="camBtn" hidden>Bật camera</button>
+  <!-- Nút reset chỉ hiện khi mở trang với ?admin -->
   <button id="resetBtn" hidden>Ẩn mờ lại (Reset)</button>
 
+  <!-- Khung nhỏ cho thấy camera đang nhận diện (ô xanh = đang nhìn vào màn hình) -->
+  <div class="cam" id="cam" hidden>
+    <div class="cam-view" id="camView">
+      <video id="video" autoplay muted playsinline></video>
+      <canvas id="overlay"></canvas>
+    </div>
+    <span class="badge" id="badge">0 người</span>
+  </div>
+
+<script src="vendor/face-api.js"></script>
 <script>
-  // Tổng số người (mỗi thiết bị tính 1 lần, cộng dồn theo thời gian) để tranh rõ nét 100%
-  const TARGET_VIEWERS = 10;
+  // ===== Cấu hình =====
+  const TARGET_VIEWERS = 10;      // số người để tranh rõ nét 100%
+  const MODE = 'accumulate';      // 'accumulate': cộng dồn mỗi lượt có người đến nhìn (không cần cùng lúc)
+                                  // 'live'      : chỉ tính số người đang nhìn tại thời điểm hiện tại
   const MAX_BLUR_PX = 24;
-  const POLL_MS = 5000;
+  const DETECT_INTERVAL_MS = 250; // nhận diện mỗi 0,25 giây
+  const STABLE_MS = 1500;         // số người phải ổn định ngần này ms mới được tính (tránh nhảy số do nhiễu)
+  const MIN_SCORE = 0.5;          // độ tin cậy tối thiểu của khuôn mặt
+  const MIN_FACE_RATIO = 0.06;    // mặt nhỏ hơn 6% bề ngang khung hình (người đứng quá xa) thì bỏ qua
+  const CHECK_GAZE = true;        // chỉ tính người quay mặt về phía màn hình
+  const YAW_MIN = 0.30, YAW_MAX = 0.70; // mũi nằm giữa hai bên hàm = đang nhìn thẳng; nới rộng để dễ tính hơn
+  const STORE_KEY = 'la_total';
 
-  const art = document.getElementById('art');
-  const pct = document.getElementById('pct');
-  const bar = document.getElementById('bar');
-  const barWrap = document.getElementById('barWrap');
-  const resetBtn = document.getElementById('resetBtn');
+  const $ = id => document.getElementById(id);
+  const art = $('art'), pct = $('pct'), bar = $('bar'), barWrap = $('barWrap');
+  const msgEl = $('msg'), camBtn = $('camBtn'), resetBtn = $('resetBtn');
+  const cam = $('cam'), camView = $('camView'), video = $('video'), overlay = $('overlay'), badge = $('badge');
 
-  // Mã ẩn danh của thiết bị, lưu trong trình duyệt để tải lại trang không bị tính thêm lần nữa
-  function getVisitorId() {
-    const make = () => (window.crypto && crypto.randomUUID)
-      ? crypto.randomUUID()
-      : Date.now().toString(36) + Math.random().toString(36).slice(2, 12);
-    try {
-      let id = localStorage.getItem('la_visitor_id');
-      if (!id) { id = make(); localStorage.setItem('la_visitor_id', id); }
-      return id;
-    } catch (e) {
-      return make();
-    }
+  if (MODE === 'live') {
+    document.querySelector('.sub').textContent = 'Càng đông người cùng nhìn vào màn hình, tranh càng rõ nét và nhiều màu sắc.';
   }
+  if (new URLSearchParams(location.search).has('admin')) resetBtn.hidden = false;
 
-  // Chỉ hiện nút reset với đường dẫn dạng /?admin=<khoá>
-  const adminKey = new URLSearchParams(location.search).get('admin');
-  if (adminKey !== null) resetBtn.hidden = false;
-
+  // ===== Hiển thị =====
   function render(count) {
     const p = Math.min(count / TARGET_VIEWERS, 1);
-    art.style.filter =
-      `blur(${(MAX_BLUR_PX * (1 - p)).toFixed(1)}px) grayscale(${(1 - p).toFixed(2)})`;
+    art.style.filter = `blur(${(MAX_BLUR_PX * (1 - p)).toFixed(1)}px) grayscale(${(1 - p).toFixed(2)})`;
     const percent = Math.round(p * 100);
     pct.textContent = percent;
     bar.style.width = percent + '%';
     barWrap.setAttribute('aria-valuenow', percent);
   }
+  const msg = t => { msgEl.textContent = t; };
 
-  async function visit() {
-    try {
-      const r = await fetch('/visit', {
-        method: 'POST',
-        cache: 'no-store',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: getVisitorId() })
-      });
-      const d = await r.json();
-      if (d.ok) render(d.count);
-    } catch (e) { /* thử lại khi tải lại trang; poll vẫn cập nhật số đếm */ }
+  // ===== Đếm =====
+  let total = 0;            // tổng lượt người đã đến nhìn (chế độ accumulate)
+  let stable = 0;           // số người đang nhìn, đã lọc nhiễu
+  let candidate = 0, candidateSince = 0;
+
+  try { total = Number(localStorage.getItem(STORE_KEY)) || 0; } catch (e) {}
+  const save = () => { try { localStorage.setItem(STORE_KEY, String(total)); } catch (e) {} };
+  const refresh = () => render(MODE === 'accumulate' ? total : stable);
+  refresh();
+
+  function onCount(n, now) {
+    if (n !== candidate) { candidate = n; candidateSince = now; }
+    if (n !== stable && now - candidateSince >= STABLE_MS) {
+      if (MODE === 'accumulate' && n > stable) { total += n - stable; save(); }  // có thêm người đến nhìn
+      stable = n;
+      badge.textContent = stable + ' người';
+      refresh();
+    }
   }
 
-  async function poll() {
-    if (document.hidden) return;
-    try {
-      const r = await fetch('/count', { cache: 'no-store' });
-      const d = await r.json();
-      if (typeof d.count === 'number') render(d.count);
-    } catch (e) {}
+  resetBtn.addEventListener('click', () => { total = 0; save(); refresh(); });
+
+  // ===== Nhận diện mặt =====
+  function isLooking(det) {
+    const box = det.detection.box;
+    if (box.width / video.videoWidth < MIN_FACE_RATIO) return false;
+    if (!CHECK_GAZE) return true;
+    const pts = det.landmarks.positions;
+    const jawL = pts[0].x, jawR = pts[16].x, nose = pts[30].x;
+    const w = jawR - jawL;
+    if (w <= 0) return false;
+    const r = (nose - jawL) / w;
+    return r >= YAW_MIN && r <= YAW_MAX;
   }
 
-  resetBtn.addEventListener('click', async () => {
-    try {
-      const r = await fetch('/reset', {
-        method: 'POST',
-        cache: 'no-store',
-        headers: { 'x-admin-key': adminKey || '' }
-      });
-      const d = await r.json();
-      if (d.ok) render(d.count);
-      else alert('Reset không thành công (sai khoá admin?).');
-    } catch (e) {}
-  });
+  function draw(dets, looking) {
+    const ctx = overlay.getContext('2d');
+    ctx.clearRect(0, 0, overlay.width, overlay.height);
+    ctx.lineWidth = Math.max(2, overlay.width / 160);
+    dets.forEach((d, i) => {
+      const b = d.detection.box;
+      ctx.strokeStyle = looking[i] ? '#4ade80' : '#9ca3af';
+      ctx.strokeRect(b.x, b.y, b.width, b.height);
+    });
+  }
 
-  visit().then(() => setInterval(poll, POLL_MS));
+  async function detectLoop() {
+    try {
+      if (video.readyState >= 2 && video.videoWidth) {
+        const dets = await faceapi
+          .detectAllFaces(video, new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: MIN_SCORE }))
+          .withFaceLandmarks(true);
+        const looking = dets.map(isLooking);
+        draw(dets, looking);
+        onCount(looking.filter(Boolean).length, performance.now());
+      }
+    } catch (e) { console.error(e); }
+    setTimeout(detectLoop, DETECT_INTERVAL_MS);
+  }
+
+  // ===== Camera =====
+  let started = false;
+  const modelsReady = (async () => {
+    try { await faceapi.tf.ready(); } catch (e) {}
+    await faceapi.nets.tinyFaceDetector.loadFromUri('vendor/models');
+    await faceapi.nets.faceLandmark68TinyNet.loadFromUri('vendor/models');
+  })();
+
+  async function startCamera() {
+    camBtn.hidden = true;
+    msg('Đang bật camera…');
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      msg('Cần mở trang bằng https hoặc localhost thì trình duyệt mới cho dùng camera.');
+      return;
+    }
+    let stream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } }, audio: false
+      });
+    } catch (e) {
+      msg('Chưa bật được camera. Hãy cho phép trang dùng camera rồi bấm "Bật camera".');
+      camBtn.hidden = false;
+      return;
+    }
+    try {
+      video.srcObject = stream;
+      await video.play();
+      await modelsReady;
+    } catch (e) {
+      console.error(e);
+      msg('Không tải được bộ nhận diện khuôn mặt. Hãy tải lại trang.');
+      return;
+    }
+    overlay.width = video.videoWidth;
+    overlay.height = video.videoHeight;
+    camView.style.aspectRatio = video.videoWidth + ' / ' + video.videoHeight;
+    cam.hidden = false;
+    msg('Camera chỉ dùng để đếm người, không ghi hình hay gửi đi đâu.');
+    if (!started) { started = true; detectLoop(); }
+  }
+
+  camBtn.addEventListener('click', startCamera);
+  startCamera();
 </script>
 </body>
 </html>

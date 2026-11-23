@@ -1,51 +1,37 @@
-# Living Artwork – Tranh rõ dần theo số người ghé xem
+# Living Artwork – Tranh rõ dần theo số người nhìn vào màn hình
 
-Mỗi thiết bị ghé xem được tính **1 lần**, **cộng dồn theo thời gian** (không cần xem cùng lúc).
-Đủ `TARGET_VIEWERS` thiết bị (mặc định 10) thì tranh rõ nét 100%.
+Camera của máy tính nhận diện khuôn mặt để đếm số người đang nhìn vào màn hình.
+Nhận diện chạy **ngay trong trình duyệt**, hình từ camera không được gửi đi đâu và không được lưu.
 
-## Chạy thử trên máy
+## Chạy
 ```bash
 npm install
 npm start
 ```
-Mở http://localhost:3000. Mỗi trình duyệt/thiết bị chỉ tính 1 lần (tải lại trang không tăng thêm).
-Để thử nhiều người trên cùng máy: mở cửa sổ ẩn danh hoặc dùng trình duyệt khác. Muốn dễ thấy hiệu ứng, đổi `TARGET_VIEWERS` trong `public/index.html` (ví dụ 3).
+Mở http://localhost:3000 và bấm **Cho phép** khi trình duyệt hỏi quyền camera.
+Camera chỉ hoạt động trên `localhost` hoặc `https` (link Render là https nên dùng được).
 
-## Thay ảnh
-Thay file `public/artwork.jpg` bằng ảnh của bạn (giữ đúng tên). Ảnh hiển thị tối đa ~1000px ngang nên nên dùng ảnh rộng khoảng 1000–1600px, dưới ~1 MB. File hiện tại chỉ là ảnh mẫu.
+## Hai chế độ đếm (đổi `MODE` trong `public/index.html`)
+- `'accumulate'` (mặc định): **cộng dồn**. Mỗi lần có thêm người đến nhìn thì cộng thêm, không cần nhìn cùng lúc.
+  Ví dụ 2 người nhìn rồi đi, lát sau 3 người khác đến thì tổng là 5. Đủ `TARGET_VIEWERS` (10) thì tranh rõ 100%.
+  Tổng được nhớ trong trình duyệt của máy đó (localStorage), tải lại trang không mất.
+  Máy không nhận ra từng người, nên một người đi rồi quay lại sẽ được tính thêm một lần.
+- `'live'`: chỉ tính số người **đang nhìn** tại thời điểm hiện tại; ai rời đi thì tranh mờ lại.
+
+## Chỉnh độ nhạy (đầu đoạn script trong `public/index.html`)
+- `STABLE_MS`: số người phải ổn định ngần này mili giây mới được tính (lọc nhiễu).
+- `MIN_FACE_RATIO`: mặt nhỏ hơn tỉ lệ này (người đứng quá xa) thì bỏ qua.
+- `CHECK_GAZE`, `YAW_MIN`, `YAW_MAX`: chỉ tính người quay mặt về phía màn hình; nới khoảng này nếu hay bị bỏ sót người.
+- `MIN_SCORE`: độ tin cậy tối thiểu của khuôn mặt.
 
 ## Reset
-Nút Reset **không hiện với người xem thường**. Chỉ hiện khi mở: `http://localhost:3000/?admin=<khoá>`.
-Trên server đặt biến môi trường `ADMIN_KEY=<khoá>` thì chỉ ai biết khoá mới reset được (nếu không đặt, ai gọi `/reset` cũng reset được; chỉ nên để vậy khi chạy thử trên máy).
+Nút Reset chỉ hiện khi mở `http://localhost:3000/?admin`.
 
-## Lưu số đếm
-- Mặc định lưu vào file `data.json` (còn nguyên khi khởi động lại server, miễn ổ đĩa không bị xoá).
-- **Render gói Free xoá ổ đĩa mỗi khi server ngủ/khởi động lại**, nên số đếm cộng dồn sẽ về 0. Để giữ lâu dài, tạo database Redis miễn phí ở upstash.com rồi đặt 2 biến môi trường trên Render:
-  - `UPSTASH_REDIS_REST_URL`
-  - `UPSTASH_REDIS_REST_TOKEN`
+## Thay ảnh
+Thay file `public/artwork.jpg` bằng ảnh của bạn (giữ đúng tên). Ảnh hiển thị tối đa ~1000px ngang.
 
-  Có 2 biến này, server tự dùng Upstash thay cho file.
-
-## API
-- `POST /visit` body `{ "id": "<mã thiết bị>" }` -> `{ ok, count, resetSeq }`
-- `GET  /count` -> `{ count, resetSeq }`
-- `POST /reset` (header `x-admin-key` nếu có đặt `ADMIN_KEY`) -> `{ ok, count: 0, resetSeq }`
-
-## Đẩy lên GitHub
-```bash
-git init
-git add .
-git commit -m "Living artwork"
-git branch -M main
-git remote add origin https://github.com/<ten-ban>/living-artwork.git
-git push -u origin main
-```
+## Thư mục `public/vendor`
+Chứa thư viện nhận diện khuôn mặt [@vladmandic/face-api](https://github.com/vladmandic/face-api) (giấy phép MIT) và các model, để trang chạy được mà không cần tải thêm từ internet.
 
 ## Deploy miễn phí trên Render
-1. render.com -> đăng nhập bằng GitHub.
-2. New -> Web Service -> chọn repo.
-3. Runtime: Node | Build: `npm install` | Start: `npm start` | Instance: Free.
-4. Environment: thêm `ADMIN_KEY` (và 2 biến Upstash ở trên nếu muốn giữ số đếm lâu dài).
-5. Create Web Service, đợi 1-2 phút để có link `https://<ten>.onrender.com`.
-
-Lưu ý: gói Free tự ngủ sau ~15 phút không truy cập (lần mở đầu sau đó sẽ chậm vài chục giây).
+Runtime: Node | Build: `npm install` | Start: `npm start` | Instance: Free. Không cần biến môi trường nào.
