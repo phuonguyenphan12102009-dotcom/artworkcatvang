@@ -134,9 +134,11 @@
   const MODE = 'accumulate';      // 'accumulate': cộng dồn mỗi lượt có người đến nhìn (không cần cùng lúc)
                                   // 'live'      : chỉ tính số người đang nhìn tại thời điểm hiện tại
   const MAX_BLUR_PX = 24;
-  const DETECT_INTERVAL_MS = 250; // nhận diện mỗi 0,25 giây
-  const STABLE_MS = 1500;         // số người phải ổn định ngần này ms mới được tính (tránh nhảy số do nhiễu)
-  const MIN_SCORE = 0.5;          // độ tin cậy tối thiểu của khuôn mặt
+  const DETECT_INTERVAL_MS = 100; // nghỉ giữa hai lần nhận diện
+  const INPUT_SIZE = 224;         // cỡ ảnh đưa vào bộ nhận diện; 224 nhận ổn định nhất khi thử với mặt thật (có thể thử 256, 320)
+  const MIN_SCORE = 0.3;          // độ tin cậy tối thiểu của khuôn mặt; hạ xuống nếu vẫn bỏ sót người, nâng lên nếu nhận nhầm
+  const ARRIVE_MS = 1500;         // phải thấy người trong phần lớn khoảng này mới tính là có người đến nhìn
+  const LEAVE_MS = 3000;          // mất dấu liên tục ngần này mới tính là người đã rời đi (chịu được lúc nhận diện chập chờn)
   const MIN_FACE_RATIO = 0.06;    // mặt nhỏ hơn 6% bề ngang khung hình (người đứng quá xa) thì bỏ qua
   const CHECK_GAZE = true;        // chỉ tính người quay mặt về phía màn hình
   const YAW_MIN = 0.30, YAW_MAX = 0.70; // mũi nằm giữa hai bên hàm = đang nhìn thẳng; nới rộng để dễ tính hơn
@@ -166,20 +168,38 @@
   // ===== Đếm =====
   let total = 0;            // tổng lượt người đã đến nhìn (chế độ accumulate)
   let stable = 0;           // số người đang nhìn, đã lọc nhiễu
-  let candidate = 0, candidateSince = 0;
+  let samples = [];         // các lần nhận diện gần đây: { t, n }
 
   try { total = Number(localStorage.getItem(STORE_KEY)) || 0; } catch (e) {}
   const save = () => { try { localStorage.setItem(STORE_KEY, String(total)); } catch (e) {} };
   const refresh = () => render(MODE === 'accumulate' ? total : stable);
   refresh();
 
+  function setStable(n) {
+    if (n === stable) return;
+    if (MODE === 'accumulate' && n > stable) { total += n - stable; save(); }  // có thêm người đến nhìn
+    stable = n;
+    badge.textContent = stable + ' người';
+    refresh();
+  }
+
   function onCount(n, now) {
-    if (n !== candidate) { candidate = n; candidateSince = now; }
-    if (n !== stable && now - candidateSince >= STABLE_MS) {
-      if (MODE === 'accumulate' && n > stable) { total += n - stable; save(); }  // có thêm người đến nhìn
-      stable = n;
-      badge.textContent = stable + ' người';
-      refresh();
+    samples.push({ t: now, n });
+    while (samples.length && now - samples[0].t > LEAVE_MS) samples.shift();
+
+    // Tăng: số người k xuất hiện ở >= 60% các lần nhận diện trong ARRIVE_MS gần nhất
+    const recent = samples.filter(s => now - s.t <= ARRIVE_MS);
+    if (recent.length >= 2) {
+      let up = 0;
+      for (let k = stable + 1; k <= 20; k++) {
+        if (recent.filter(s => s.n >= k).length >= 0.6 * recent.length) up = k; else break;
+      }
+      if (up > stable) { setStable(up); return; }
+    }
+    // Giảm: trong LEAVE_MS gần nhất không còn lần nào thấy đủ `stable` người
+    if (samples.length && now - samples[0].t >= LEAVE_MS - 400) {
+      const maxRecent = Math.max(...samples.map(s => s.n));
+      if (maxRecent < stable) setStable(maxRecent);
     }
   }
 
@@ -213,7 +233,7 @@
     try {
       if (video.readyState >= 2 && video.videoWidth) {
         const dets = await faceapi
-          .detectAllFaces(video, new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: MIN_SCORE }))
+          .detectAllFaces(video, new faceapi.TinyFaceDetectorOptions({ inputSize: INPUT_SIZE, scoreThreshold: MIN_SCORE }))
           .withFaceLandmarks(true);
         const looking = dets.map(isLooking);
         draw(dets, looking);

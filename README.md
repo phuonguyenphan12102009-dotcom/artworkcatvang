@@ -19,10 +19,11 @@ Camera chỉ hoạt động trên `localhost` hoặc `https` (link Render là ht
 - `'live'`: chỉ tính số người **đang nhìn** tại thời điểm hiện tại; ai rời đi thì tranh mờ lại.
 
 ## Chỉnh độ nhạy (đầu đoạn script trong `public/index.html`)
-- `STABLE_MS`: số người phải ổn định ngần này mili giây mới được tính (lọc nhiễu).
+- `MIN_SCORE` (mặc định 0.3): độ tin cậy tối thiểu của khuôn mặt. Hạ xuống nếu vẫn bỏ sót người, nâng lên nếu nhận nhầm.
+- `INPUT_SIZE` (mặc định 224): cỡ ảnh đưa vào bộ nhận diện. Thử với mặt thật thì 224 nhận ổn định nhất; có thể thử 256 hoặc 320 nếu người đứng xa camera.
+- `ARRIVE_MS` / `LEAVE_MS`: thời gian để tính một người là đã đến / đã rời đi. Lớn hơn thì ít bị đếm nhầm nhưng phản ứng chậm hơn.
 - `MIN_FACE_RATIO`: mặt nhỏ hơn tỉ lệ này (người đứng quá xa) thì bỏ qua.
 - `CHECK_GAZE`, `YAW_MIN`, `YAW_MAX`: chỉ tính người quay mặt về phía màn hình; nới khoảng này nếu hay bị bỏ sót người.
-- `MIN_SCORE`: độ tin cậy tối thiểu của khuôn mặt.
 
 ## Reset
 Nút Reset chỉ hiện khi mở `http://localhost:3000/?admin`.
