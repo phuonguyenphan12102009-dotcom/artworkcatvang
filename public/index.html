@@ -93,6 +93,12 @@
     font-size: .75rem; line-height: 1; padding: 5px 8px; border-radius: 999px;
   }
   @media (max-width: 520px) { .cam { width: 108px; right: 8px; bottom: 8px; } }
+  #dbg {
+    position: fixed; left: 10px; top: 10px; margin: 0; text-align: left;
+    font: 12px/1.4 ui-monospace, Menlo, Consolas, monospace; line-height: 1.4;
+    background: rgba(58, 49, 40, .85); color: #d9f99d; padding: 8px 10px; border-radius: 6px;
+    white-space: pre; z-index: 5;
+  }
   [hidden] { display: none !important; }
 </style>
 </head>
@@ -118,6 +124,9 @@
   <!-- Nút reset chỉ hiện khi mở trang với ?admin -->
   <button id="resetBtn" hidden>Ẩn mờ lại (Reset)</button>
 
+  <!-- Bảng số liệu để chỉnh độ nhạy: mở trang với ?debug -->
+  <pre id="dbg" hidden></pre>
+
   <!-- Khung nhỏ cho thấy camera đang nhận diện (ô xanh = đang nhìn vào màn hình) -->
   <div class="cam" id="cam" hidden>
     <div class="cam-view" id="camView">
@@ -134,14 +143,27 @@
   const MODE = 'accumulate';      // 'accumulate': cộng dồn mỗi lượt có người đến nhìn (không cần cùng lúc)
                                   // 'live'      : chỉ tính số người đang nhìn tại thời điểm hiện tại
   const MAX_BLUR_PX = 24;
-  const DETECT_INTERVAL_MS = 100; // nghỉ giữa hai lần nhận diện
-  const INPUT_SIZE = 224;         // cỡ ảnh đưa vào bộ nhận diện; 224 nhận ổn định nhất khi thử với mặt thật (có thể thử 256, 320)
-  const MIN_SCORE = 0.3;          // độ tin cậy tối thiểu của khuôn mặt; hạ xuống nếu vẫn bỏ sót người, nâng lên nếu nhận nhầm
-  const ARRIVE_MS = 1500;         // phải thấy người trong phần lớn khoảng này mới tính là có người đến nhìn
+  const DETECT_INTERVAL_MS = 80;  // nghỉ giữa hai lần nhận diện (thời gian chạy model đã tự làm chậm vòng lặp trên máy yếu)
+
+  // --- Camera ---
+  const CAM_WIDTH = 1280, CAM_HEIGHT = 720; // độ phân giải yêu cầu; cao hơn giúp nhận ra người đứng xa (máy yếu có thể hạ về 640x480)
+
+  // --- Bộ nhận diện khuôn mặt ---
+  const PREFER_SSD = true;        // true: dùng SsdMobilenetv1 (chính xác hơn) nếu có file model trong public/vendor/models, không có thì tự dùng TinyFaceDetector
+  const SSD_MIN_CONF = 0.5;       // SSD: độ tin cậy tối thiểu
+  const INPUT_SIZE = 320;         // Tiny: cỡ ảnh đưa vào (128/160/192/224/320/416); lớn hơn nhận được người xa hơn nhưng chậm hơn
+  const MIN_SCORE = 0.35;         // Tiny: độ tin cậy tối thiểu; hạ xuống nếu bỏ sót người, nâng lên nếu nhận nhầm
+
+  // --- Lọc nhiễu theo thời gian ---
+  const ARRIVE_MS = 1200;         // phải thấy người trong phần lớn khoảng này mới tính là có người đến nhìn
   const LEAVE_MS = 3000;          // mất dấu liên tục ngần này mới tính là người đã rời đi (chịu được lúc nhận diện chập chờn)
-  const MIN_FACE_RATIO = 0.06;    // mặt nhỏ hơn 6% bề ngang khung hình (người đứng quá xa) thì bỏ qua
-  const CHECK_GAZE = true;        // chỉ tính người quay mặt về phía màn hình
-  const YAW_MIN = 0.30, YAW_MAX = 0.70; // mũi nằm giữa hai bên hàm = đang nhìn thẳng; nới rộng để dễ tính hơn
+  const MIN_FACE_RATIO = 0.04;    // mặt nhỏ hơn 4% bề ngang khung hình (người đứng quá xa) thì bỏ qua
+
+  // --- Hướng nhìn (chỉ tính người đang quay mặt về phía màn hình) ---
+  const CHECK_GAZE = true;
+  const YAW_MAX_OFFSET = 0.22;    // lệch trái/phải: 0 = nhìn thẳng; 0.22 ≈ quay đầu ~30°. Nới ra (0.28) nếu hay bỏ sót, siết lại (0.16) nếu tính nhầm người nhìn đi chỗ khác
+  const PITCH_MIN = 0.22, PITCH_MAX = 0.65; // ngẩng/cúi: vị trí mũi trên đoạn từ đường hai mắt xuống cằm (nhìn thẳng thường ≈ 0.35–0.45). Mở trang bằng ?debug để xem số thực tế rồi chỉnh
+  const ROLL_MAX_DEG = 30;        // nghiêng đầu quá góc này thì không tính
   const STORE_KEY = 'la_total';
 
   const $ = id => document.getElementById(id);
@@ -152,7 +174,11 @@
   if (MODE === 'live') {
     document.querySelector('.sub').textContent = 'Càng đông người cùng nhìn vào màn hình, tranh càng rõ nét và nhiều màu sắc.';
   }
-  if (new URLSearchParams(location.search).has('admin')) resetBtn.hidden = false;
+  const params = new URLSearchParams(location.search);
+  if (params.has('admin')) resetBtn.hidden = false;
+  const DEBUG = params.has('debug');
+  const dbg = $('dbg');
+  if (DEBUG) dbg.hidden = false;
 
   // ===== Hiển thị =====
   function render(count) {
@@ -206,17 +232,43 @@
   resetBtn.addEventListener('click', () => { total = 0; save(); refresh(); });
 
   // ===== Nhận diện mặt =====
-  function isLooking(det) {
-    const box = det.detection.box;
-    if (box.width / video.videoWidth < MIN_FACE_RATIO) return false;
-    if (!CHECK_GAZE) return true;
-    const pts = det.landmarks.positions;
-    const jawL = pts[0].x, jawR = pts[16].x, nose = pts[30].x;
-    const w = jawR - jawL;
-    if (w <= 0) return false;
-    const r = (nose - jawL) / w;
-    return r >= YAW_MIN && r <= YAW_MAX;
+  const avg = (pts, idx, k) => idx.reduce((sum, i) => sum + pts[i][k], 0) / idx.length;
+  const LEFT_EYE = [36, 37, 38, 39, 40, 41], RIGHT_EYE = [42, 43, 44, 45, 46, 47];
+
+  // Ước lượng hướng mặt từ 68 điểm landmark. Trả về { yaw, pitch, roll } (yaw: 0 = thẳng; pitch: tỉ lệ; roll: độ)
+  function headPose(pts) {
+    const nose = pts[30];
+    // Trái/phải: so mũi với giữa hai khóe mắt ngoài, và với hai bên hàm; lấy trung bình cho đỡ nhiễu
+    const eyeL = pts[36], eyeR = pts[45];
+    const eyeW = eyeR.x - eyeL.x, jawW = pts[16].x - pts[0].x;
+    if (eyeW <= 0 || jawW <= 0) return null;
+    const yawEye = (nose.x - eyeL.x) / eyeW - 0.5;
+    const yawJaw = (nose.x - pts[0].x) / jawW - 0.5;
+    const yaw = (yawEye + yawJaw) / 2;
+    // Ngẩng/cúi: vị trí mũi trên đoạn từ đường hai mắt xuống cằm
+    const eyeY = (avg(pts, LEFT_EYE, 'y') + avg(pts, RIGHT_EYE, 'y')) / 2;
+    const chinY = pts[8].y;
+    if (chinY - eyeY <= 0) return null;
+    const pitch = (nose.y - eyeY) / (chinY - eyeY);
+    // Nghiêng đầu: góc đường nối hai mắt so với phương ngang
+    const cl = { x: avg(pts, LEFT_EYE, 'x'), y: avg(pts, LEFT_EYE, 'y') };
+    const cr = { x: avg(pts, RIGHT_EYE, 'x'), y: avg(pts, RIGHT_EYE, 'y') };
+    const roll = Math.atan2(cr.y - cl.y, cr.x - cl.x) * 180 / Math.PI;
+    return { yaw, pitch, roll };
   }
+
+  function lookingFrom(box, pts, videoWidth) {
+    if (box.width / videoWidth < MIN_FACE_RATIO) return { ok: false };
+    if (!CHECK_GAZE) return { ok: true };
+    const pose = headPose(pts);
+    if (!pose) return { ok: false };
+    const ok = Math.abs(pose.yaw) <= YAW_MAX_OFFSET
+      && pose.pitch >= PITCH_MIN && pose.pitch <= PITCH_MAX
+      && Math.abs(pose.roll) <= ROLL_MAX_DEG;
+    return { ok, pose };
+  }
+
+  const isLooking = det => lookingFrom(det.detection.box, det.landmarks.positions, video.videoWidth);
 
   function draw(dets, looking) {
     const ctx = overlay.getContext('2d');
@@ -224,20 +276,32 @@
     ctx.lineWidth = Math.max(2, overlay.width / 160);
     dets.forEach((d, i) => {
       const b = d.detection.box;
-      ctx.strokeStyle = looking[i] ? '#4ade80' : '#9ca3af';
+      ctx.strokeStyle = looking[i].ok ? '#4ade80' : '#9ca3af';
       ctx.strokeRect(b.x, b.y, b.width, b.height);
     });
   }
 
+  let detectorOptions = null;
+  let detectorName = '';
+  const fmt = v => (v >= 0 ? ' ' : '') + v.toFixed(2);
+
   async function detectLoop() {
     try {
-      if (video.readyState >= 2 && video.videoWidth) {
-        const dets = await faceapi
-          .detectAllFaces(video, new faceapi.TinyFaceDetectorOptions({ inputSize: INPUT_SIZE, scoreThreshold: MIN_SCORE }))
-          .withFaceLandmarks(true);
+      if (video.readyState >= 2 && video.videoWidth && detectorOptions) {
+        const dets = await faceapi.detectAllFaces(video, detectorOptions).withFaceLandmarks(true);
         const looking = dets.map(isLooking);
         draw(dets, looking);
-        onCount(looking.filter(Boolean).length, performance.now());
+        onCount(looking.filter(r => r.ok).length, performance.now());
+        if (DEBUG) {
+          const lines = ['Bộ nhận diện: ' + detectorName, 'Khuôn mặt: ' + dets.length + '  | đang nhìn: ' + looking.filter(r => r.ok).length];
+          looking.forEach((r, i) => {
+            lines.push(r.pose
+              ? '#' + (i + 1) + ' yaw ' + fmt(r.pose.yaw) + '  pitch ' + r.pose.pitch.toFixed(2) + '  roll ' + fmt(r.pose.roll / 1) + '°  ' + (r.ok ? 'NHÌN' : '—')
+              : '#' + (i + 1) + (r.ok ? ' NHÌN' : ' (quá nhỏ/xa)'));
+          });
+          lines.push('Ngưỡng: |yaw| ≤ ' + YAW_MAX_OFFSET + ', pitch ' + PITCH_MIN + '–' + PITCH_MAX);
+          dbg.textContent = lines.join('\n');
+        }
       }
     } catch (e) { console.error(e); }
     setTimeout(detectLoop, DETECT_INTERVAL_MS);
@@ -245,10 +309,25 @@
 
   // ===== Camera =====
   let started = false;
+  const MODEL_DIR = 'vendor/models';
   const modelsReady = (async () => {
     try { await faceapi.tf.ready(); } catch (e) {}
-    await faceapi.nets.tinyFaceDetector.loadFromUri('vendor/models');
-    await faceapi.nets.faceLandmark68TinyNet.loadFromUri('vendor/models');
+    await faceapi.nets.faceLandmark68TinyNet.loadFromUri(MODEL_DIR);
+    // Ưu tiên SSD (chính xác hơn); nếu chưa có file model thì dùng Tiny như trước
+    if (PREFER_SSD) {
+      try {
+        await faceapi.nets.ssdMobilenetv1.loadFromUri(MODEL_DIR);
+        detectorOptions = new faceapi.SsdMobilenetv1Options({ minConfidence: SSD_MIN_CONF });
+        detectorName = 'SSD MobileNet v1';
+      } catch (e) {
+        console.info('Chưa có model SSD trong ' + MODEL_DIR + ', dùng TinyFaceDetector.');
+      }
+    }
+    if (!detectorOptions) {
+      await faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_DIR);
+      detectorOptions = new faceapi.TinyFaceDetectorOptions({ inputSize: INPUT_SIZE, scoreThreshold: MIN_SCORE });
+      detectorName = 'Tiny Face Detector (' + INPUT_SIZE + ')';
+    }
   })();
 
   async function startCamera() {
@@ -261,7 +340,7 @@
     let stream;
     try {
       stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } }, audio: false
+        video: { facingMode: 'user', width: { ideal: CAM_WIDTH }, height: { ideal: CAM_HEIGHT } }, audio: false
       });
     } catch (e) {
       msg('Chưa bật được camera. Hãy cho phép trang dùng camera rồi bấm "Bật camera".');
@@ -281,6 +360,7 @@
     overlay.height = video.videoHeight;
     camView.style.aspectRatio = video.videoWidth + ' / ' + video.videoHeight;
     cam.hidden = false;
+    msg('Camera chỉ dùng để đếm người, không ghi hình hay gửi đi đâu.');
     if (!started) { started = true; detectLoop(); }
   }
 

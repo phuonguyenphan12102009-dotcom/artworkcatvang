@@ -19,11 +19,16 @@ Camera chỉ hoạt động trên `localhost` hoặc `https` (link Render là ht
 - `'live'`: chỉ tính số người **đang nhìn** tại thời điểm hiện tại; ai rời đi thì tranh mờ lại.
 
 ## Chỉnh độ nhạy (đầu đoạn script trong `public/index.html`)
-- `MIN_SCORE` (mặc định 0.3): độ tin cậy tối thiểu của khuôn mặt. Hạ xuống nếu vẫn bỏ sót người, nâng lên nếu nhận nhầm.
-- `INPUT_SIZE` (mặc định 224): cỡ ảnh đưa vào bộ nhận diện. Thử với mặt thật thì 224 nhận ổn định nhất; có thể thử 256 hoặc 320 nếu người đứng xa camera.
-- `ARRIVE_MS` / `LEAVE_MS`: thời gian để tính một người là đã đến / đã rời đi. Lớn hơn thì ít bị đếm nhầm nhưng phản ứng chậm hơn.
-- `MIN_FACE_RATIO`: mặt nhỏ hơn tỉ lệ này (người đứng quá xa) thì bỏ qua.
-- `CHECK_GAZE`, `YAW_MIN`, `YAW_MAX`: chỉ tính người quay mặt về phía màn hình; nới khoảng này nếu hay bị bỏ sót người.
+Mở trang với `?debug` (ví dụ `http://localhost:3000/?debug`) để thấy bảng số liệu: bộ nhận diện đang dùng, số mặt, và góc quay (yaw), ngẩng/cúi (pitch), nghiêng (roll) của từng người. Nhìn số rồi chỉnh các ngưỡng bên dưới.
+- `CAM_WIDTH` / `CAM_HEIGHT` (1280x720): độ phân giải camera. Cao hơn nhận ra người xa tốt hơn; máy yếu thì hạ về 640x480.
+- `PREFER_SSD` (true): dùng bộ nhận diện SSD MobileNet (chính xác hơn) nếu có file model, nếu không tự dùng TinyFaceDetector. `SSD_MIN_CONF` (0.5) là độ tin cậy tối thiểu của SSD.
+- `INPUT_SIZE` (320) và `MIN_SCORE` (0.35): chỉ áp dụng cho TinyFaceDetector. Tăng `INPUT_SIZE` (416) nếu người đứng xa; hạ `MIN_SCORE` nếu bỏ sót người, nâng nếu nhận nhầm.
+- `ARRIVE_MS` / `LEAVE_MS`: thời gian để tính một người là đã đến / đã rời đi. Lớn hơn thì ít đếm nhầm nhưng phản ứng chậm hơn.
+- `MIN_FACE_RATIO` (0.04): mặt nhỏ hơn tỉ lệ này (người đứng quá xa) thì bỏ qua.
+- `CHECK_GAZE`, `YAW_MAX_OFFSET`, `PITCH_MIN`/`PITCH_MAX`, `ROLL_MAX_DEG`: chỉ tính người quay mặt về phía màn hình. Nới các ngưỡng nếu hay bỏ sót người, siết lại nếu tính nhầm người đang nhìn đi chỗ khác.
+
+## Bật bộ nhận diện SSD MobileNet (chính xác hơn, nặng hơn)
+Tải model từ https://github.com/vladmandic/face-api/tree/master/model hai file `ssd_mobilenetv1_model.bin` và `ssd_mobilenetv1_model.json`, bỏ vào `public/vendor/models/`, rồi **đổi tên** `ssd_mobilenetv1_model.json` thành `ssd_mobilenetv1_model-weights_manifest.json` (thư viện tìm đúng tên này). Mở `?debug` để kiểm tra dòng "Bộ nhận diện" hiện `SSD MobileNet v1`. Nếu máy bị giật, tăng `DETECT_INTERVAL_MS` hoặc đặt `PREFER_SSD = false`.
 
 ## Reset
 Nút Reset chỉ hiện khi mở `http://localhost:3000/?admin`.
