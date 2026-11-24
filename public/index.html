@@ -4,137 +4,143 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Bức tranh chỉ rõ khi có người cùng nhìn</title>
+<meta name="description" content="Tác phẩm tương tác về kiến trúc chùa Khmer: mỗi người nhìn vào màn hình làm bức tranh rõ nét hơn.">
+<meta name="theme-color" content="#F6F1E7">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=EB+Garamond:wght@500;600&family=Lora:wght@400;500&display=swap" rel="stylesheet">
 <style>
   :root {
-    --bg: #f7f3eb;
-    --ink: #3a3128;
-    --muted: #8a7d6d;
-    --accent: #b5835a;
+    --canvas: #e6e2cc; --surface: #f0f0de; --ink: #2B1D16; --muted: #6B5A4B;
+    --line: rgba(43, 29, 22, .16); --accent: #9E2B1A; --track: #DDD2BE;
+    --gold: #B69354; --ok: #5B9A9E; --stone: #D6CEC0;
+    --c-red: #923327; --c-gold: #B69354; --c-teal: #5B9A9E; --c-brown: #392A1D;
+    --serif: "EB Garamond", "Noto Serif", Georgia, serif;
+    --body: "Lora", "Noto Serif", Georgia, serif;
+    --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px; --s6: 24px; --s8: 32px; --s12: 48px; --s16: 64px;
+    --ease-out: cubic-bezier(.16, 1, .3, 1);
   }
   * { box-sizing: border-box; }
-  body {
-    margin: 0;
-    min-height: 100vh;
-    background: var(--bg);
-    color: var(--ink);
-    /* Lora hỗ trợ đầy đủ tiếng Việt; các font phía sau là dự phòng cũng có dấu tiếng Việt */
-    font-family: "Lora", "Noto Serif", "Times New Roman", serif;
-    line-height: 1.5;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    text-align: center;
-    padding: 24px 12px;
-  }
-  h1 { font-weight: 500; font-size: clamp(1.4rem, 3.6vw, 2rem); line-height: 1.3; margin: 0 0 8px; }
-  .sub { color: var(--muted); font-style: italic; margin: 0 0 16px; max-width: 800px; }
-  .frame {
-    padding: 12px;
-    background: #fffdf8;
-    box-shadow: 0 10px 40px rgba(80, 60, 30, .15);
-    border-radius: 4px;
-    max-width: 96vw;
-  }
-  .frame-inner { overflow: hidden; border-radius: 2px; line-height: 0; }
-  /* Ảnh to hơn: tối đa 1000px ngang, nhưng không cao quá màn hình để còn thấy thanh tiến trình */
-  #art {
-    display: block;
-    width: auto;
-    height: auto;
-    max-width: min(calc(96vw - 24px), 1000px);
-    max-height: calc(100vh - 310px);
-    min-height: 220px;
-    object-fit: contain;
-    transition: filter 0.9s ease;
-    filter: blur(24px) grayscale(1);
-  }
-  .stats { margin-top: 20px; width: min(92vw, 560px); }
-  .percent { font-size: 1.9rem; line-height: 1.2; color: var(--accent); }
-  .bar {
-    width: 100%;
-    height: 14px;
-    background: #e6dfd1;
-    border-radius: 999px;
-    margin: 8px auto 0;
-    overflow: hidden;
-    box-shadow: inset 0 1px 3px rgba(80, 60, 30, .15);
-  }
-  .bar > i { display: block; height: 100%; width: 0; background: var(--accent); border-radius: 999px; transition: width .9s ease; }
-  button {
-    margin-top: 22px;
-    font: inherit;
-    background: transparent;
-    color: var(--ink);
-    border: 1px solid var(--accent);
-    padding: 10px 22px;
-    border-radius: 999px;
-    cursor: pointer;
-    transition: background .2s, color .2s;
-  }
-  button:hover { background: var(--accent); color: #fff; }
+  [hidden] { display: none !important; }
+  body { margin: 0; min-height: 100vh; background: var(--canvas); color: var(--ink); font: 400 1rem/1.55 var(--body); display: flex; flex-direction: column; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .skip { position: absolute; left: var(--s4); top: -64px; background: var(--ink); color: var(--canvas); padding: var(--s3) var(--s4); z-index: 10; }
+  .skip:focus { top: var(--s2); }
+  .page { width: 100%; max-width: 1280px; margin-inline: auto; padding-inline: var(--s4); }
+  .meta { font-size: .75rem; line-height: 1.4; color: var(--muted); }
 
-  .note { color: var(--muted); font-size: .85rem; margin: 12px 0 0; min-height: 1.4em; }
-  .cam {
-    position: fixed; right: 14px; bottom: 14px; width: 168px;
-    background: #fffdf8; padding: 5px; border-radius: 6px;
-    box-shadow: 0 6px 24px rgba(80, 60, 30, .25);
-    line-height: 0;
-  }
-  .cam-view { position: relative; width: 100%; aspect-ratio: 4 / 3; transform: scaleX(-1); border-radius: 3px; overflow: hidden; background: #222; }
+  .top { border-bottom: 1px solid var(--line); }
+  .top .page { display: flex; justify-content: space-between; align-items: baseline; padding-block: var(--s4); }
+  .site { font: 600 1.25rem/1.2 var(--serif); }
+
+  .hero { display: grid; gap: var(--s8); padding-block: var(--s8) var(--s12); align-items: center; }
+  .work { margin: 0; }
+  .frame { border: 1px solid var(--line); background: var(--surface); line-height: 0; border-radius: 2px; overflow: hidden; }
+  #art { display: block; width: 100%; height: auto; max-height: 68vh; object-fit: cover; transition: filter .9s ease-out; filter: blur(24px) grayscale(1); }
+  .work figcaption { margin-top: var(--s2); }
+  h1 { margin: 0 0 var(--s4); font: 600 clamp(2.25rem, 4.2vw, 3.25rem)/1.12 var(--serif); letter-spacing: -.01em; text-wrap: balance; }
+  .sub { margin: 0 0 var(--s8); max-width: 65ch; }
+
+  .panel { background: var(--surface); border: 1px solid var(--line); border-radius: 2px; padding: var(--s6); }
+  .label { margin: 0; font-size: .875rem; font-weight: 500; color: var(--muted); }
+  .percent { font: 600 clamp(2.75rem, 5.5vw, 4.5rem)/1.1 var(--serif); font-variant-numeric: lining-nums; }
+  .bar { height: 8px; margin-top: var(--s3); background: var(--track); border-radius: 2px; overflow: hidden; }
+  .bar > i { display: block; width: 100%; height: 100%; background: var(--accent); transform: scaleX(0); transform-origin: left; transition: transform .3s var(--ease-out); }
+  .note { margin: var(--s4) 0 0; font-size: .875rem; color: var(--muted); min-height: 1.5em; }
+  .note::before { content: ""; display: inline-block; width: 8px; height: 8px; margin-right: var(--s2); border-radius: 50%; background: var(--stone); vertical-align: 1px; }
+  .cam-on .note::before { background: var(--ok); }
+  .palette { margin-top: var(--s6); padding-top: var(--s4); border-top: 1px solid var(--line); }
+  .swatches { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--s2); margin: var(--s2) 0 0; padding: 0; list-style: none; }
+  .sw { padding: 0; border: 0; max-width: none; }
+  .sw .chip { position: relative; display: block; height: 40px; background: var(--stone); border-radius: 2px; overflow: hidden; }
+  .sw .chip i { position: absolute; inset: 0; background: var(--c); opacity: var(--on, 0); transition: opacity .3s var(--ease-out); }
+  .sw .meta { display: block; margin-top: var(--s1); }
+  button { margin: var(--s4) var(--s2) 0 0; min-height: 44px; padding: 0 var(--s6); font: 500 .875rem/1 var(--body); color: var(--accent); background: transparent; border: 1px solid var(--accent); border-radius: 2px; cursor: pointer; transition: background .15s ease-out, color .15s ease-out; }
+  button:hover { background: var(--accent); color: var(--canvas); }
+
+  .how { background: var(--surface); border-block: 1px solid var(--line); }
+  .how .page { padding-block: var(--s12); }
+  h2 { margin: 0 0 var(--s6); font: 600 1.5rem/1.2 var(--serif); }
+  ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 0; }
+  li { padding-block: var(--s4); border-top: 1px solid var(--line); max-width: 65ch; }
+  li .step { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; margin-bottom: var(--s2); background: var(--gold); color: var(--ink); font: 500 .875rem/1 var(--body); border-radius: 2px; }
+  li p { margin: 0; }
+  footer .page { padding-block: var(--s6); }
+
+  .panel-foot { display: flex; flex-wrap: wrap; gap: var(--s4); align-items: flex-end; justify-content: space-between; min-height: 112px; }
+  .foot-text { flex: 1 1 200px; }
+  .cam { position: relative; flex: none; width: 128px; background: var(--canvas); border: 1px solid var(--line); padding: var(--s1); border-radius: 2px; line-height: 0; }
+  .cam-view { position: relative; width: 100%; aspect-ratio: 4 / 3; transform: scaleX(-1); overflow: hidden; background: #222; }
   .cam-view video, .cam-view canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
   .cam-view video { object-fit: fill; }
-  .badge {
-    position: absolute; left: 10px; bottom: 10px;
-    background: rgba(58, 49, 40, .78); color: #fff;
-    font-size: .75rem; line-height: 1; padding: 5px 8px; border-radius: 999px;
+  .badge { position: absolute; left: var(--s2); bottom: var(--s2); background: rgba(43, 29, 22, .85); color: #fff; font-size: .75rem; line-height: 1.4; padding: 2px var(--s2); border-radius: 2px; }
+  #dbg { position: fixed; left: 10px; top: 10px; margin: 0; text-align: left; font: .75rem/1.4 ui-monospace, Menlo, Consolas, monospace; background: rgba(43, 29, 22, .9); color: #d9f99d; padding: var(--s2) var(--s3); border-radius: 2px; white-space: pre; z-index: 5; }
+
+  @media (min-width: 768px) {
+    .page { padding-inline: var(--s8); }
+    .hero { grid-template-columns: minmax(0, 7fr) minmax(0, 5fr); gap: var(--s12); padding-block: var(--s12) var(--s16); }
+    #art { max-height: calc(100vh - 176px); }
+    ol { grid-template-columns: repeat(3, 1fr); gap: var(--s8); }
+    li { padding-top: var(--s6); }
   }
-  @media (max-width: 520px) { .cam { width: 108px; right: 8px; bottom: 8px; } }
-  #dbg {
-    position: fixed; left: 10px; top: 10px; margin: 0; text-align: left;
-    font: 12px/1.4 ui-monospace, Menlo, Consolas, monospace; line-height: 1.4;
-    background: rgba(58, 49, 40, .85); color: #d9f99d; padding: 8px 10px; border-radius: 6px;
-    white-space: pre; z-index: 5;
-  }
-  [hidden] { display: none !important; }
+  @media (prefers-reduced-motion: reduce) { #art, .bar > i, .sw .chip i, button { transition: none; } }
 </style>
 </head>
 <body>
-  <h1>Bức tranh chỉ hiện rõ khi nhiều người cùng nhìn</h1>
-  <p class="sub">Mỗi người đến nhìn vào màn hình sẽ làm bức tranh rõ nét và nhiều màu sắc hơn, không cần nhìn cùng lúc.</p>
+  <a class="skip" href="#main">Bỏ qua, đến nội dung chính</a>
+  <header class="top"><div class="page"><span class="site">Kiến trúc Khmer</span><span class="meta">Tác phẩm tương tác</span></div></header>
 
-  <div class="frame">
-    <div class="frame-inner">
-      <img id="art" src="artwork.jpg" alt="Tác phẩm nghệ thuật">
+  <main id="main">
+    <div class="page hero">
+      <figure class="work">
+        <div class="frame"><img id="art" src="artwork.jpg" alt="Mặt tiền một ngôi chùa Khmer: cầu thang đỏ hai bên có tượng thiên nữ và rắn naga mạ vàng, phía trên là mái tháp chạm khắc"></div>
+        <figcaption class="meta">Ảnh: kiến trúc chùa Khmer</figcaption>
+      </figure>
+
+      <div>
+        <h1>Bức tranh chỉ hiện rõ khi nhiều người cùng nhìn</h1>
+        <p class="sub">Mỗi người đến nhìn vào màn hình sẽ làm bức tranh rõ nét và nhiều màu sắc hơn, không cần nhìn cùng lúc.</p>
+
+        <div class="panel">
+          <p class="label">Độ rõ nét hiện tại</p>
+          <div class="percent"><span id="pct">0</span>%</div>
+          <div class="bar" id="barWrap" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-label="Mức độ rõ nét của bức tranh"><i id="bar"></i></div>
+          <div class="panel-foot">
+            <div class="foot-text">
+              <p class="note" id="msg" aria-live="polite">Đang bật camera…</p>
+              <button id="camBtn" hidden>Bật camera</button>
+              <!-- Nút reset chỉ hiện khi mở trang với ?admin -->
+              <button id="resetBtn" hidden>Đặt lại về 0%</button>
+            </div>
+            <!-- Khung nhỏ cho thấy camera đang nhận diện (ô xanh = đang nhìn vào màn hình) -->
+            <div class="cam" id="cam" hidden>
+                <div class="cam-view" id="camView">
+                  <video id="video" autoplay muted playsinline></video>
+                  <canvas id="overlay"></canvas>
+                </div>
+                <span class="badge" id="badge">0 người</span>
+              </div>
+          </div>
+        </div>
+      </div>
     </div>
-  </div>
 
-  <div class="stats">
-    <div class="percent"><span id="pct">0</span>%</div>
-    <div class="bar" id="barWrap" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-label="Mức độ rõ nét của bức tranh">
-      <i id="bar"></i>
-    </div>
-  </div>
+    <section class="how" aria-labelledby="how-h">
+      <div class="page">
+        <h2 id="how-h">Cách hoạt động</h2>
+        <ol>
+          <li><span class="step">1</span><p>Camera của máy tính đếm số người đang nhìn vào màn hình.</p></li>
+          <li><span class="step">2</span><p>Mỗi lượt có người đến nhìn, bức tranh rõ nét và nhiều màu hơn một chút. Không cần mọi người nhìn cùng lúc.</p></li>
+          <li><span class="step">3</span><p>Việc nhận diện chạy ngay trong trình duyệt. Hình từ camera không được lưu và không gửi đi đâu.</p></li>
+        </ol>
+      </div>
+    </section>
+  </main>
 
-  <p class="note" id="msg">Đang bật camera…</p>
-  <button id="camBtn" hidden>Bật camera</button>
-  <!-- Nút reset chỉ hiện khi mở trang với ?admin -->
-  <button id="resetBtn" hidden>Ẩn mờ lại (Reset)</button>
+  <footer><div class="page meta">Cần cho phép truy cập camera để tranh phản ứng với người xem.</div></footer>
 
   <!-- Bảng số liệu để chỉnh độ nhạy: mở trang với ?debug -->
   <pre id="dbg" hidden></pre>
-
-  <!-- Khung nhỏ cho thấy camera đang nhận diện (ô xanh = đang nhìn vào màn hình) -->
-  <div class="cam" id="cam" hidden>
-    <div class="cam-view" id="camView">
-      <video id="video" autoplay muted playsinline></video>
-      <canvas id="overlay"></canvas>
-    </div>
-    <span class="badge" id="badge">0 người</span>
-  </div>
 
 <script src="vendor/face-api.js"></script>
 <script>
@@ -181,13 +187,16 @@
   if (DEBUG) dbg.hidden = false;
 
   // ===== Hiển thị =====
+  const chips = document.querySelectorAll('.sw .chip i');
   function render(count) {
     const p = Math.min(count / TARGET_VIEWERS, 1);
     art.style.filter = `blur(${(MAX_BLUR_PX * (1 - p)).toFixed(1)}px) grayscale(${(1 - p).toFixed(2)})`;
     const percent = Math.round(p * 100);
     pct.textContent = percent;
-    bar.style.width = percent + '%';
+    bar.style.transform = 'scaleX(' + (percent / 100) + ')';
     barWrap.setAttribute('aria-valuenow', percent);
+    // Mỗi ô màu hiện ra dần: ô 1 đủ màu ở 25%, ô 2 ở 50%, ô 3 ở 75%, ô 4 ở 100%
+    chips.forEach((el, i) => el.style.setProperty('--on', Math.max(0, Math.min(1, p * 4 - i)).toFixed(2)));
   }
   const msg = t => { msgEl.textContent = t; };
 
@@ -229,7 +238,10 @@
     }
   }
 
-  resetBtn.addEventListener('click', () => { total = 0; save(); refresh(); });
+  resetBtn.addEventListener('click', () => {
+    if (!confirm('Đặt lại độ rõ nét về 0%? Số lượt người đã đếm trên máy này sẽ bị xóa.')) return;
+    total = 0; save(); refresh();
+  });
 
   // ===== Nhận diện mặt =====
   const avg = (pts, idx, k) => idx.reduce((sum, i) => sum + pts[i][k], 0) / idx.length;
@@ -360,6 +372,7 @@
     overlay.height = video.videoHeight;
     camView.style.aspectRatio = video.videoWidth + ' / ' + video.videoHeight;
     cam.hidden = false;
+    document.body.classList.add('cam-on');
     msg('Camera chỉ dùng để đếm người, không ghi hình hay gửi đi đâu.');
     if (!started) { started = true; detectLoop(); }
   }
