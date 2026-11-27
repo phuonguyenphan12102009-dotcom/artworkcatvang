@@ -235,8 +235,8 @@
 
   // --- Hướng nhìn (chỉ tính người đang quay mặt về phía màn hình) ---
   const CHECK_GAZE = true;
-  const YAW_MAX_OFFSET = 0.22;    // lệch trái/phải: 0 = nhìn thẳng; 0.22 ≈ quay đầu ~30°. Nới ra (0.28) nếu hay bỏ sót, siết lại (0.16) nếu tính nhầm người nhìn đi chỗ khác
-  const PITCH_MIN = 0.18, PITCH_MAX = 0.65; // ngẩng/cúi: vị trí mũi trên đoạn từ đường hai mắt xuống cằm (nhìn thẳng thường ≈ 0.35–0.45). Mở trang bằng ?debug để xem số thực tế rồi chỉnh
+  const YAW_MAX_OFFSET = 0.28;    // lệch trái/phải: 0 = nhìn thẳng; 0.22 ≈ quay đầu ~30°. Nới ra (0.28) nếu hay bỏ sót, siết lại (0.16) nếu tính nhầm người nhìn đi chỗ khác
+  const PITCH_MIN = 0.12, PITCH_MAX = 0.72; // ngẩng/cúi: vị trí mũi trên đoạn từ đường hai mắt xuống cằm (nhìn thẳng thường ≈ 0.35–0.45). Mở trang bằng ?debug để xem số thực tế rồi chỉnh
   const ROLL_MAX_DEG = 30;        // nghiêng đầu quá góc này thì không tính
   const STORE_KEY = 'la_total';
 
@@ -385,6 +385,7 @@
   const detectors = {};     // { tiny: {name, opts}, ssd: {name, opts} }
   let current = null;       // bộ đang dùng
   let avgMs = 0;            // thời gian trung bình của một lần nhận diện
+  let chosen = false, warm = 0; // đã chọn bộ nhận diện chưa / số khung đã chạy
 
   const makeTiny = size => ({ name: 'Tiny Face Detector (' + size + ')', opts: new faceapi.TinyFaceDetectorOptions({ inputSize: size, scoreThreshold: TINY_MIN_SCORE }) });
   const MODEL_DIR = 'vendor/models';
@@ -420,7 +421,11 @@
   async function detectLoop() {
     try {
       if (video.readyState >= 2 && video.videoWidth && detectors.tiny) {
-        if (!current) current = await chooseDetector();
+        if (!current) current = detectors.tiny;   // bắt đầu ngay bằng Tiny để hiện khung mặt liền
+        if (!chosen && ++warm >= 4) {              // sau vài khung hình mới đo tốc độ để chọn bộ tốt nhất
+          chosen = true;
+          try { current = await chooseDetector(); avgMs = 0; } catch (e) { console.error(e); }
+        }
         const t0 = performance.now();
         const dets = await faceapi.detectAllFaces(video, current.opts).withFaceLandmarks(true);
         const took = performance.now() - t0;
