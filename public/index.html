@@ -212,15 +212,18 @@
   const MODE = 'accumulate';      // 'accumulate': cộng dồn mỗi lượt có người đến nhìn (không cần cùng lúc)
                                   // 'live'      : chỉ tính số người đang nhìn tại thời điểm hiện tại
   const MAX_BLUR_PX = 24;
-  const DETECT_INTERVAL_MS = 80;  // nghỉ giữa hai lần nhận diện (thời gian chạy model đã tự làm chậm vòng lặp trên máy yếu)
+  const DETECT_INTERVAL_MS = 30;  // nghỉ giữa hai lần nhận diện (thời gian chạy model đã tự làm chậm vòng lặp trên máy yếu)
 
   // --- Camera ---
   const CAM_WIDTH = 1280, CAM_HEIGHT = 720; // độ phân giải yêu cầu; cao hơn giúp nhận ra người đứng xa (máy yếu có thể hạ về 640x480)
 
   // --- Bộ nhận diện khuôn mặt ---
-  const DETECTOR = 'auto';        // 'auto': tự chọn theo tốc độ máy (SSD nếu đủ nhanh, không thì Tiny) | 'ssd' | 'tiny'
+  const DETECTOR = 'hybrid';      // 'hybrid': Tiny quét liên tục (nhanh) + SSD chen vào thỉnh thoảng để bắt người đứng xa | 'auto': tự chọn một bộ theo tốc độ máy | 'ssd' | 'tiny'
+  const SSD_EVERY_MS = 1500;      // hybrid: cứ chừng này ms thì chạy SSD một lần (máy chậm sẽ tự giãn ra)
+  const SSD_TTL_MS = 2500;        // hybrid: kết quả SSD được dùng lại trong khoảng này giữa hai lần chạy SSD
+  const MERGE_IOU = 0.25;         // hybrid: hai khung chồng nhau hơn mức này thì coi là cùng một người
   const SSD_MIN_CONF = 0.5;       // SSD: độ tin cậy tối thiểu
-  const TINY_INPUT_SIZE = 512;    // Tiny: cỡ ảnh đưa vào (đo thử: 512 bắt đủ người hơn 320 rõ rệt, chậm hơn ~1,7 lần)
+  const TINY_INPUT_SIZE = 416;    // Tiny: cỡ ảnh đưa vào (đo thử: 512 bắt đủ người hơn 320 rõ rệt, chậm hơn ~1,7 lần)
   const TINY_SLOW_MS = 400;       // máy chạy Tiny một lần quá ngưỡng này thì tự hạ cỡ ảnh về 320 cho nhanh
   const TINY_MIN_SCORE = 0.35;    // Tiny: độ tin cậy tối thiểu
   const AUTO_TINY_MAX_MS = 80;     // auto: Tiny chạy một lần quá ngưỡng này (máy yếu) thì khỏi thử SSD, dùng Tiny luôn
@@ -228,7 +231,7 @@
   const SSD_FALLBACK_MS = 450;    // đang dùng SSD mà trung bình mỗi lần quá ngưỡng này (máy nóng/chậm) thì tự chuyển sang Tiny
 
   // --- Lọc nhiễu theo thời gian ---
-  const ARRIVE_MS = 1200;         // phải thấy người trong phần lớn khoảng này mới tính là có người đến nhìn (tự giãn ra trên máy chậm)
+  const ARRIVE_MS = 500;          // phải thấy người trong phần lớn khoảng này mới tính là có người đến nhìn (tự giãn ra trên máy chậm)
   const LEAVE_MS = 3000;          // mất dấu liên tục ngần này mới tính là người đã rời đi (chịu được lúc nhận diện chập chờn)
   const REENTRY_COOLDOWN_MS = 15000; // chống một người ra vào liên tục để tự làm đầy tranh: sau một lượt tính, người đầu tiên quay lại trong khoảng này không tính thêm. Đặt 0 để tắt
   const MIN_FACE_RATIO = 0.05;    // mặt nhỏ hơn 5% bề ngang khung hình (người đứng quá xa, khoảng trên 2 m) thì bỏ qua
@@ -385,6 +388,14 @@
   const detectors = {};     // { tiny: {name, opts}, ssd: {name, opts} }
   let current = null;       // bộ đang dùng
   let avgMs = 0;            // thời gian trung bình của một lần nhận diện
+  let tinyShrunk = false, ssdCache = [], lastSsdT = 0, ssdMs = 0;
+  const iou = (a, b) => {
+    const w = Math.min(a.x + a.width, b.x + b.width) - Math.max(a.x, b.x);
+    const h = Math.min(a.y + a.height, b.y + b.height) - Math.max(a.y, b.y);
+    if (w <= 0 || h <= 0) return 0;
+    const inter = w * h;
+    return inter / (a.width * a.height + b.width * b.height - inter);
+  };
   let chosen = false, warm = 0; // đã chọn bộ nhận diện chưa / số khung đã chạy
 
   const makeTiny = size => ({ name: 'Tiny Face Detector (' + size + ')', opts: new faceapi.TinyFaceDetectorOptions({ inputSize: size, scoreThreshold: TINY_MIN_SCORE }) });
@@ -394,7 +405,12 @@
     await faceapi.nets.faceLandmark68TinyNet.loadFromUri(MODEL_DIR);
     await faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_DIR);   // luôn nạp Tiny làm phương án dự phòng
     detectors.tiny = makeTiny(TINY_INPUT_SIZE);
-    if (DETECTOR !== 'tiny') {
+    if (DETECTOR === 'hybrid') {
+      // Nạp SSD ngầm: Tiny dùng được ngay, SSD sẵn sàng thì tự tham gia
+      faceapi.nets.ssdMobilenetv1.loadFromUri(MODEL_DIR).then(() => {
+        detectors.ssd = { name: 'SSD MobileNet v1', opts: new faceapi.SsdMobilenetv1Options({ minConfidence: SSD_MIN_CONF }) };
+      }).catch(() => console.info('Chưa có model SSD trong ' + MODEL_DIR + ', chỉ dùng Tiny Face Detector.'));
+    } else if (DETECTOR !== 'tiny') {
       try {
         await faceapi.nets.ssdMobilenetv1.loadFromUri(MODEL_DIR);
         detectors.ssd = { name: 'SSD MobileNet v1', opts: new faceapi.SsdMobilenetv1Options({ minConfidence: SSD_MIN_CONF }) };
@@ -422,21 +438,40 @@
     try {
       if (video.readyState >= 2 && video.videoWidth && detectors.tiny) {
         if (!current) current = detectors.tiny;   // bắt đầu ngay bằng Tiny để hiện khung mặt liền
-        if (!chosen && ++warm >= 4) {              // sau vài khung hình mới đo tốc độ để chọn bộ tốt nhất
+        if (DETECTOR === 'auto' && !chosen && ++warm >= 4) {              // sau vài khung hình mới đo tốc độ để chọn bộ tốt nhất
           chosen = true;
           try { current = await chooseDetector(); avgMs = 0; } catch (e) { console.error(e); }
         }
         const t0 = performance.now();
-        const dets = await faceapi.detectAllFaces(video, current.opts).withFaceLandmarks(true);
+        let dets = await faceapi.detectAllFaces(video, current.opts).withFaceLandmarks(true);
         const took = performance.now() - t0;
         avgMs = avgMs ? avgMs * 0.85 + took * 0.15 : took;
+        if (DETECTOR === 'hybrid') {
+          // Máy chậm: hạ cỡ ảnh của Tiny cho nhanh
+          if (avgMs > TINY_SLOW_MS && TINY_INPUT_SIZE > 320 && !tinyShrunk) { tinyShrunk = true; detectors.tiny = makeTiny(320); current = detectors.tiny; }
+          const nowT = performance.now();
+          // SSD chen vào định kỳ; nếu SSD chạy lâu thì tự thưa ra (ít nhất gấp 4 lần thời gian một lần chạy)
+          if (detectors.ssd && nowT - lastSsdT >= Math.max(SSD_EVERY_MS, ssdMs * 4)) {
+            try {
+              const s0 = performance.now();
+              ssdCache = await faceapi.detectAllFaces(video, detectors.ssd.opts).withFaceLandmarks(true);
+              ssdMs = performance.now() - s0;
+              lastSsdT = performance.now();
+            } catch (e) { console.error(e); lastSsdT = performance.now(); }
+          }
+          // Gộp: mặt SSD thấy mà Tiny bỏ sót thì thêm vào (khung chồng nhau thì tính là một người)
+          if (performance.now() - lastSsdT <= SSD_TTL_MS && ssdCache.length) {
+            const extra = ssdCache.filter(sd => !dets.some(td => iou(td.detection.box, sd.detection.box) > MERGE_IOU));
+            dets = dets.concat(extra);
+          }
+        }
         // Đang dùng SSD mà máy chậm đi (nóng, chạy nhiều tab): tự lùi về Tiny
         if (DETECTOR === 'auto' && current === detectors.ssd && avgMs > SSD_FALLBACK_MS) { current = detectors.tiny; avgMs = 0; }
         const looking = dets.map(isLooking);
         draw(dets, looking);
         onCount(looking.filter(r => r.ok).length, performance.now());
         if (DEBUG) {
-          const lines = ['Bộ nhận diện: ' + current.name, 'Mỗi lần nhận diện: ' + Math.round(avgMs) + ' ms (~' + (1000 / Math.max(avgMs + DETECT_INTERVAL_MS, 1)).toFixed(1) + ' lần/giây)',
+          const lines = ['Bộ nhận diện: ' + (DETECTOR === 'hybrid' ? current.name + (detectors.ssd ? ' + SSD mỗi ~' + Math.round(Math.max(SSD_EVERY_MS, ssdMs * 4)) + ' ms (SSD chạy ' + Math.round(ssdMs) + ' ms)' : ' (SSD đang tải…)') : current.name), 'Mỗi lần nhận diện: ' + Math.round(avgMs) + ' ms (~' + (1000 / Math.max(avgMs + DETECT_INTERVAL_MS, 1)).toFixed(1) + ' lần/giây)',
             'Khuôn mặt: ' + dets.length + '  | đang nhìn: ' + looking.filter(r => r.ok).length + '  | tổng lượt: ' + total];
           looking.forEach((r, i) => {
             lines.push(r.pose
