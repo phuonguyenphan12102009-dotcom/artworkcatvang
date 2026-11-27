@@ -122,6 +122,14 @@
   .js .hero.is-ready h1 { transition-delay: .7s; } .js .hero.is-ready .sub { transition-delay: .85s; } .js .hero.is-ready .panel { transition-delay: 1s; }
   .js .hero.is-ready .hero__rosette { opacity: .26; transition: opacity 2s ease .5s; }
 
+  /* ---------- Ruy-băng hoa văn chạy ---------- */
+  .ribbon { position: relative; background: var(--ink-deep); border-top: 3px solid var(--gold); overflow: hidden; }
+  .ribbon__main { height: 4.25rem; background-size: 120px 68px; background-repeat: repeat-x; background-position: 0 center; animation: ribbonMove 14s linear infinite;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='120' height='68' viewBox='0 0 120 68' fill='none' stroke='%23FFD680' stroke-width='1.6'><path d='M60 6 L88 34 L60 62 L32 34 Z'/><path d='M60 17 L77 34 L60 51 L43 34 Z' stroke='%23E8A93B'/><circle cx='60' cy='34' r='4.5' fill='%232A9096' stroke='none'/><path d='M0 34 C 10 20 22 20 32 34 C 22 48 10 48 0 34 Z' stroke='%23C9862A'/><path d='M120 34 C 110 20 98 20 88 34 C 98 48 110 48 120 34 Z' stroke='%23C9862A'/><circle cx='60' cy='6' r='2' fill='%23FFD680' stroke='none'/><circle cx='60' cy='62' r='2' fill='%23FFD680' stroke='none'/></svg>"); }
+  .ribbon__thin { height: .55rem; border-top: 1px solid rgba(255,214,128,.5); background-image: repeating-linear-gradient(135deg, var(--ember) 0 10px, var(--gold) 10px 20px, var(--teal-mid) 20px 30px); background-size: 120px 100%; animation: ribbonBack 9s linear infinite; }
+  @keyframes ribbonMove { to { background-position-x: -240px; } }
+  @keyframes ribbonBack { from { background-position-x: -120px; } to { background-position-x: 0; } }
+
   @media (max-width: 899px) {
     .hero { align-items: flex-start; }
     .hero__rosette { left: 70%; top: 30%; width: 90vw; margin: -45vw 0 0 -45vw; }
@@ -451,19 +459,51 @@
       msg('Cần mở trang bằng https hoặc localhost thì trình duyệt mới cho dùng camera.');
       return;
     }
-    let stream;
-    try {
-      stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'user', width: { ideal: CAM_WIDTH }, height: { ideal: CAM_HEIGHT } }, audio: false
-      });
-    } catch (e) {
-      msg('Chưa bật được camera. Hãy cho phép trang dùng camera rồi bấm "Bật camera".');
+    // Thử lần lượt vài cấu hình, vì một số camera/trình duyệt không chịu 1280x720 hoặc facingMode
+    const attempts = [
+      { video: { facingMode: 'user', width: { ideal: CAM_WIDTH }, height: { ideal: CAM_HEIGHT } }, audio: false },
+      { video: { width: { ideal: 640 }, height: { ideal: 480 } }, audio: false },
+      { video: true, audio: false }
+    ];
+    let stream = null, lastErr = null;
+    for (const c of attempts) {
+      try { stream = await navigator.mediaDevices.getUserMedia(c); break; }
+      catch (e) {
+        lastErr = e;
+        console.error('getUserMedia lỗi:', e && e.name, e && e.message);
+        // Người dùng/trình duyệt chặn quyền hoặc không có camera thì thử lại cũng vô ích
+        if (e && (e.name === 'NotAllowedError' || e.name === 'SecurityError' || e.name === 'NotFoundError')) break;
+      }
+    }
+    if (!stream) {
+      const n = lastErr && lastErr.name;
+      let text;
+      if (n === 'NotAllowedError' || n === 'SecurityError') {
+        text = 'Trình duyệt đang chặn camera của trang này. Bấm biểu tượng ổ khóa cạnh địa chỉ web, chọn Camera → Cho phép, rồi bấm "Bật camera". (Nếu trang đang nhúng trong trang khác, hãy mở trực tiếp bằng link riêng.)';
+      } else if (n === 'NotFoundError' || n === 'OverconstrainedError') {
+        text = 'Không tìm thấy camera. Hãy kiểm tra camera đã cắm/bật chưa, rồi bấm "Bật camera".';
+      } else if (n === 'NotReadableError' || n === 'AbortError') {
+        text = 'Camera đang được ứng dụng khác dùng (Zoom, Meet, tab khác…). Hãy tắt chúng đi rồi bấm "Bật camera".';
+      } else {
+        text = 'Chưa bật được camera' + (n ? ' (' + n + ')' : '') + '. Hãy cho phép trang dùng camera rồi bấm "Bật camera".';
+      }
+      msg(text);
       camBtn.hidden = false;
       return;
     }
     try {
       video.srcObject = stream;
+      video.muted = true;
+      video.playsInline = true;
       await video.play();
+    } catch (e) {
+      console.error('video.play lỗi:', e);
+      stream.getTracks().forEach(t => t.stop());
+      msg('Camera đã mở nhưng không phát được hình. Hãy bấm "Bật camera" để thử lại.');
+      camBtn.hidden = false;
+      return;
+    }
+    try {
       await modelsReady;
     } catch (e) {
       console.error(e);
