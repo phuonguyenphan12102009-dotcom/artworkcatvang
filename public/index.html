@@ -5,139 +5,198 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Bức tranh chỉ rõ khi có người cùng nhìn</title>
 <meta name="description" content="Tác phẩm tương tác về kiến trúc chùa Khmer: mỗi người nhìn vào màn hình làm bức tranh rõ nét hơn.">
-<meta name="theme-color" content="#F6F1E7">
+<meta name="theme-color" content="#B93D1E">
+<script>
+  document.documentElement.classList.add('js');
+  // Phòng khi script hiệu ứng không chạy: sau 6 giây tự hiện toàn bộ nội dung
+  setTimeout(function () { document.documentElement.classList.add('reveal-all'); }, 6000);
+</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=EB+Garamond:wght@500;600&family=Lora:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400..800;1,400..800&family=Lora:ital,wght@0,400..700;1,400..700&family=Playfair+Display:ital,wght@0,400..900;1,400..900&family=Shalimar&display=swap" rel="stylesheet">
+<link rel="preload" as="image" href="artwork.jpg">
 <style>
+  /* Cùng ngôn ngữ thiết kế với web Bảo tàng số Kiến trúc Chùa Khmer:
+     cam đất – kem – vàng – nâu mực, góc vuông, bóng đổ cứng, cạnh ảnh cắt bậc thang. */
   :root {
-    --canvas: #e6e2cc; --surface: #f0f0de; --ink: #2B1D16; --muted: #6B5A4B;
-    --line: rgba(43, 29, 22, .16); --accent: #9E2B1A; --track: #DDD2BE;
-    --gold: #B69354; --ok: #5B9A9E; --stone: #D6CEC0;
-    --c-red: #923327; --c-gold: #B69354; --c-teal: #5B9A9E; --c-brown: #392A1D;
-    --serif: "EB Garamond", "Noto Serif", Georgia, serif;
-    --body: "Lora", "Noto Serif", Georgia, serif;
-    --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px; --s6: 24px; --s8: 32px; --s12: 48px; --s16: 64px;
-    --ease-out: cubic-bezier(.16, 1, .3, 1);
+    --paper: #FDF1DC; --paper-light: #FFF8EC; --paper-dark: #FBE4BF;
+    --ink: #4A2416; --ink-deep: #2A110A; --ink-soft: #8A4B32;
+    --gold: #E8A93B; --gold-light: #FFD680; --gold-dark: #C9862A;
+    --ember: #E2532D; --ember-dark: #B93D1E; --teal-mid: #2A9096;
+    --ease-out: cubic-bezier(.22, 1, .36, 1);
+    --ease-curtain: cubic-bezier(.77, 0, .18, 1);
+    --lattice: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='44' height='44' viewBox='0 0 44 44'><path d='M22 2 L42 22 L22 42 L2 22 Z' fill='none' stroke='%23E8A93B' stroke-opacity='.16' stroke-width='1'/><path d='M22 12 L32 22 L22 32 L12 22 Z' fill='none' stroke='%23E8A93B' stroke-opacity='.10' stroke-width='1'/></svg>");
   }
   * { box-sizing: border-box; }
   [hidden] { display: none !important; }
-  body { margin: 0; min-height: 100vh; background: var(--canvas); color: var(--ink); font: 400 1rem/1.55 var(--body); display: flex; flex-direction: column; }
-  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-  .skip { position: absolute; left: var(--s4); top: -64px; background: var(--ink); color: var(--canvas); padding: var(--s3) var(--s4); z-index: 10; }
-  .skip:focus { top: var(--s2); }
-  .page { width: 100%; max-width: 1280px; margin-inline: auto; padding-inline: var(--s4); }
-  .meta { font-size: .75rem; line-height: 1.4; color: var(--muted); }
+  html { scroll-behavior: smooth; }
+  body { margin: 0; min-height: 100vh; display: flex; flex-direction: column; color: var(--ink); font: 400 1.125rem/1.7 "Lora", Georgia, serif;
+    background-color: var(--paper);
+    background-image: repeating-radial-gradient(circle at 0 0, rgba(74,36,22,.028) 0, rgba(74,36,22,.028) 1px, transparent 1px, transparent 3px); }
+  :focus-visible { outline: 3px solid var(--gold); outline-offset: 3px; }
+  .skip { position: absolute; left: 1rem; top: -64px; background: var(--ink-deep); color: var(--paper-light); padding: .75rem 1rem; z-index: 100; }
+  .skip:focus { top: .5rem; }
+  .page { width: 100%; max-width: 78rem; margin-inline: auto; padding-inline: 1.5rem; }
+  .meta { font-size: .95rem; line-height: 1.45; color: rgba(255,248,236,.72); }
 
-  .top { border-bottom: 1px solid var(--line); }
-  .top .page { display: flex; justify-content: space-between; align-items: baseline; padding-block: var(--s4); }
-  .site { font: 600 1.25rem/1.2 var(--serif); }
+  /* ---------- Header ---------- */
+  main { flex: 1; display: flex; flex-direction: column; }
+  .site-header { position: fixed; inset: 0 0 auto 0; z-index: 50; transition: background-color .3s, box-shadow .3s; }
+  .site-header::before { content: ""; position: absolute; inset: 0 0 -2.5rem 0; z-index: -1; pointer-events: none; background: linear-gradient(180deg, rgba(42,17,10,.55), rgba(42,17,10,0)); transition: opacity .3s; }
+  .site-header.is-scrolled { background: var(--ember-dark); box-shadow: 0 8px 26px -12px rgba(42,17,10,.7); }
+  .site-header.is-scrolled::before { opacity: 0; }
+  .site-header__bar { max-width: 96rem; margin-inline: auto; padding: 1rem clamp(1.5rem, 2.8vw, 2.5rem); display: flex; align-items: center; justify-content: space-between; gap: 1.5rem; }
+  .brand { display: flex; align-items: center; gap: .8rem; color: var(--paper-light); text-decoration: none; }
+  .icon-box { width: 46px; height: 46px; min-width: 46px; border-radius: 50%; background: #f7a838; display: flex; align-items: center; justify-content: center; padding: 6px; }
+  .icon-box img { width: 100%; height: 100%; object-fit: contain; display: block; }
+  .brand__name { font: 600 1.15rem/1.2 "Playfair Display", serif; }
+  .brand__name em { color: var(--gold-light); }
+  .nav-link { font-size: 1.1rem; color: rgba(255,248,236,.9); text-decoration: none; padding-block: .25rem;
+    background: linear-gradient(var(--gold-light), var(--gold-light)) 0 100% / 0 2px no-repeat; transition: background-size .3s var(--ease-out), color .2s; }
+  .nav-link:hover { color: var(--gold-light); background-size: 100% 2px; }
 
-  .hero { display: grid; gap: var(--s8); padding-block: var(--s8) var(--s12); align-items: center; }
+  /* ---------- Nút ---------- */
+  .btn { display: inline-flex; align-items: center; justify-content: center; min-height: 48px; padding: .9rem 1.7rem; margin: 1rem .6rem 0 0;
+    font: 700 1.05rem/1.1 "Playfair Display", serif; border: 2px solid transparent; border-radius: 2px; cursor: pointer; text-align: center;
+    transition: transform .25s var(--ease-out), box-shadow .25s var(--ease-out), background-color .2s, color .2s; }
+  .btn:hover { transform: translate(-3px, -3px); box-shadow: 5px 5px 0 var(--ink-deep); }
+  .btn:active { transform: none; box-shadow: none; }
+  .btn.btn--pill { border-radius: 999px; }
+  .btn.btn--gold { background: var(--gold); color: var(--ink-deep); }
+  .btn.btn--gold:hover { background: var(--gold-light); box-shadow: 5px 5px 0 rgba(255,248,236,.25); }
+  .btn.btn--line { background: transparent; border-color: rgba(255,248,236,.7); color: var(--paper-light); }
+  .btn.btn--line:hover { background: var(--paper-light); color: var(--ember-dark); box-shadow: 5px 5px 0 rgba(255,248,236,.25); }
+
+  /* ---------- Hero ---------- */
+  .hero { position: relative; isolation: isolate; overflow: hidden; min-height: calc(100svh - 5rem); flex: 1; display: flex; align-items: center; color: var(--paper-light);
+    padding: 6rem 0 2.5rem; background: linear-gradient(100deg, #A63719 0%, #D0451F 38%, #E2532D 62%, #C9862A 140%); }
+  .hero__rosette { position: absolute; z-index: 0; left: 26%; top: 50%; width: min(60vw, 56rem); aspect-ratio: 1; margin: calc(min(60vw, 56rem) / -2) 0 0 calc(min(60vw, 56rem) / -2);
+    transform: rotate(var(--spin, 0deg)); pointer-events: none; opacity: .26; }
+  .hero__rosette img { display: block; width: 100%; height: 100%; animation: spin 120s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .hero__inner { position: relative; z-index: 2; width: 100%; max-width: 96rem; margin-inline: auto; padding-inline: 1.5rem; display: grid; gap: 2.5rem; align-items: center; }
+  @media (min-width: 900px) { .hero__inner { padding-inline: 2.5rem; grid-template-columns: minmax(0, 1fr) minmax(21rem, 29rem); gap: 3.5rem; } }
+
   .work { margin: 0; }
-  .frame { border: 1px solid var(--line); background: var(--surface); line-height: 0; border-radius: 2px; overflow: hidden; }
-  #art { display: block; width: 100%; height: auto; max-height: 68vh; object-fit: cover; transition: filter .9s ease-out; filter: blur(24px) grayscale(1); }
-  .work figcaption { margin-top: var(--s2); }
-  h1 { margin: 0 0 var(--s4); font: 600 clamp(2.25rem, 4.2vw, 3.25rem)/1.12 var(--serif); letter-spacing: -.01em; text-wrap: balance; }
-  .sub { margin: 0 0 var(--s8); max-width: 65ch; }
+  .work__frame { position: relative; width: 100%; aspect-ratio: 3 / 2; }
+  .work__img { position: absolute; inset: 0; overflow: hidden; background: var(--ink-deep); box-shadow: 0 28px 60px -28px rgba(42,17,10,.7); }
+  #art { display: block; width: 100%; height: 100%; object-fit: cover; transform: scale(calc(1 + var(--b, 24) * .0025)); transition: filter .9s ease-out, transform .9s ease-out; filter: blur(24px) grayscale(1); }
+  .work figcaption { margin-top: 1rem; }
 
-  .panel { background: var(--surface); border: 1px solid var(--line); border-radius: 2px; padding: var(--s6); }
-  .label { margin: 0; font-size: .875rem; font-weight: 500; color: var(--muted); }
-  .percent { font: 600 clamp(2.75rem, 5.5vw, 4.5rem)/1.1 var(--serif); font-variant-numeric: lining-nums; }
-  .bar { height: 8px; margin-top: var(--s3); background: var(--track); border-radius: 2px; overflow: hidden; }
-  .bar > i { display: block; width: 100%; height: 100%; background: var(--accent); transform: scaleX(0); transform-origin: left; transition: transform .3s var(--ease-out); }
-  .note { margin: var(--s4) 0 0; font-size: .875rem; color: var(--muted); min-height: 1.5em; }
-  .note::before { content: ""; display: inline-block; width: 8px; height: 8px; margin-right: var(--s2); border-radius: 50%; background: var(--stone); vertical-align: 1px; }
-  .cam-on .note::before { background: var(--ok); }
-  .palette { margin-top: var(--s6); padding-top: var(--s4); border-top: 1px solid var(--line); }
-  .swatches { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--s2); margin: var(--s2) 0 0; padding: 0; list-style: none; }
-  .sw { padding: 0; border: 0; max-width: none; }
-  .sw .chip { position: relative; display: block; height: 40px; background: var(--stone); border-radius: 2px; overflow: hidden; }
-  .sw .chip i { position: absolute; inset: 0; background: var(--c); opacity: var(--on, 0); transition: opacity .3s var(--ease-out); }
-  .sw .meta { display: block; margin-top: var(--s1); }
-  button { margin: var(--s4) var(--s2) 0 0; min-height: 44px; padding: 0 var(--s6); font: 500 .875rem/1 var(--body); color: var(--accent); background: transparent; border: 1px solid var(--accent); border-radius: 2px; cursor: pointer; transition: background .15s ease-out, color .15s ease-out; }
-  button:hover { background: var(--accent); color: var(--canvas); }
+  .script { margin: 0; font: 400 clamp(4.5rem, 9vw, 7.5rem)/.8 "Shalimar", cursive; letter-spacing: .01em; color: var(--paper-light);
+    -webkit-text-stroke: .018em var(--paper-light); paint-order: stroke fill; padding: .08em 0 .12em; overflow: hidden; }
+  .script > span { display: inline-block; }
+  h1 { margin: .5rem 0 1rem; font: 700 clamp(1.8rem, 3vw, 2.45rem)/1.18 "Playfair Display", serif; color: var(--paper-light); text-wrap: balance; }
+  .sub { margin: 0 0 1.9rem; max-width: 34rem; font-size: 1.12rem; line-height: 1.65; color: rgba(255,248,236,.93); }
 
-  .how { background: var(--surface); border-block: 1px solid var(--line); }
-  .how .page { padding-block: var(--s12); }
-  h2 { margin: 0 0 var(--s6); font: 600 1.5rem/1.2 var(--serif); }
-  ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 0; }
-  li { padding-block: var(--s4); border-top: 1px solid var(--line); max-width: 65ch; }
-  li .step { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; margin-bottom: var(--s2); background: var(--gold); color: var(--ink); font: 500 .875rem/1 var(--body); border-radius: 2px; }
-  li p { margin: 0; }
-  footer .page { padding-block: var(--s6); }
-
-  .panel-foot { display: flex; flex-wrap: wrap; gap: var(--s4); align-items: flex-end; justify-content: space-between; min-height: 112px; }
+  /* Bảng độ rõ nét */
+  .panel { position: relative; background: var(--ink-deep); border: 1px solid rgba(255,214,128,.35); padding: 1.5rem 1.6rem 1.5rem; box-shadow: 10px 10px 0 rgba(42,17,10,.38); }
+  .label { margin: 0; font: 600 1.05rem/1.3 "Playfair Display", serif; color: rgba(255,248,236,.78); }
+  .percent { margin-top: .15rem; font: 800 clamp(3.2rem, 6vw, 5rem)/1.05 "Playfair Display", serif; color: var(--gold-light); font-variant-numeric: lining-nums; }
+  .bar { height: 12px; margin-top: .8rem; background: rgba(255,248,236,.14); overflow: hidden; }
+  .bar > i { display: block; width: 100%; height: 100%; background: linear-gradient(90deg, var(--ember), var(--gold) 72%, var(--gold-light)); transform: scaleX(0); transform-origin: left; transition: transform .3s var(--ease-out); }
+  .ticks { position: relative; height: 22px; margin-top: .5rem; }
+  .ticks i { position: absolute; top: 4px; width: 11px; height: 11px; border: 1.5px solid rgba(255,214,128,.5); background: transparent; transform: translateX(-50%) rotate(45deg); transition: background-color .3s, border-color .3s; }
+  .ticks i:nth-child(1) { left: 25%; } .ticks i:nth-child(2) { left: 50%; } .ticks i:nth-child(3) { left: 75%; } .ticks i:nth-child(4) { left: calc(100% - 6px); }
+  .ticks i.on { background: var(--gold); border-color: var(--gold); }
+  .panel-foot { display: flex; flex-wrap: wrap; gap: 1rem; align-items: flex-end; justify-content: space-between; margin-top: .6rem; padding-top: 1rem; border-top: 1px solid rgba(255,214,128,.22); }
   .foot-text { flex: 1 1 200px; }
-  .cam { position: relative; flex: none; width: 128px; background: var(--canvas); border: 1px solid var(--line); padding: var(--s1); border-radius: 2px; line-height: 0; }
+  .note { margin: 0; font-size: 1rem; line-height: 1.5; color: rgba(255,248,236,.78); min-height: 1.5em; }
+  .note::before { content: ""; display: inline-block; width: 8px; height: 8px; margin-right: .6rem; background: rgba(255,248,236,.35); transform: rotate(45deg); vertical-align: 1px; transition: background-color .3s; }
+  .cam-on .note::before { background: var(--teal-mid); }
+  .cam { position: relative; flex: none; width: 136px; background: var(--ink-deep); border: 2px solid var(--gold); padding: 3px; line-height: 0; }
   .cam-view { position: relative; width: 100%; aspect-ratio: 4 / 3; transform: scaleX(-1); overflow: hidden; background: #222; }
   .cam-view video, .cam-view canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
   .cam-view video { object-fit: fill; }
-  .badge { position: absolute; left: var(--s2); bottom: var(--s2); background: rgba(43, 29, 22, .85); color: #fff; font-size: .75rem; line-height: 1.4; padding: 2px var(--s2); border-radius: 2px; }
-  #dbg { position: fixed; left: 10px; top: 10px; margin: 0; text-align: left; font: .75rem/1.4 ui-monospace, Menlo, Consolas, monospace; background: rgba(43, 29, 22, .9); color: #d9f99d; padding: var(--s2) var(--s3); border-radius: 2px; white-space: pre; z-index: 5; }
+  .badge { position: absolute; left: 8px; bottom: 8px; background: rgba(42,17,10,.88); color: var(--gold-light); font: 600 .8rem/1.4 "Playfair Display", serif; padding: 2px 8px; }
+  #dbg { position: fixed; left: 10px; top: 10px; margin: 0; text-align: left; font: .75rem/1.4 ui-monospace, Menlo, Consolas, monospace; background: rgba(42,17,10,.92); color: #d9f99d; padding: .5rem .75rem; white-space: pre; z-index: 90; }
 
-  @media (min-width: 768px) {
-    .page { padding-inline: var(--s8); }
-    .hero { grid-template-columns: minmax(0, 7fr) minmax(0, 5fr); gap: var(--s12); padding-block: var(--s12) var(--s16); }
-    #art { max-height: calc(100vh - 176px); }
-    ol { grid-template-columns: repeat(3, 1fr); gap: var(--s8); }
-    li { padding-top: var(--s6); }
+  /* Một chuỗi xuất hiện khi tải trang */
+  .js .work__img { clip-path: inset(100% 0 0 0); }
+  .js .script > span { transform: translateY(110%); }
+  .js h1, .js .sub, .js .panel { opacity: 0; transform: translateY(22px); }
+  .js .hero__rosette { opacity: 0; }
+  .js .hero.is-ready .work__img { clip-path: inset(-30px); transition: clip-path 1.3s var(--ease-curtain); }
+  .js .hero.is-ready .script > span { transform: none; transition: transform 1.1s var(--ease-out) .4s; }
+  .js .hero.is-ready h1, .js .hero.is-ready .sub, .js .hero.is-ready .panel { opacity: 1; transform: none; transition: opacity .9s ease, transform .9s var(--ease-out); }
+  .js .hero.is-ready h1 { transition-delay: .7s; } .js .hero.is-ready .sub { transition-delay: .85s; } .js .hero.is-ready .panel { transition-delay: 1s; }
+  .js .hero.is-ready .hero__rosette { opacity: .26; transition: opacity 2s ease .5s; }
+
+  @media (max-width: 899px) {
+    .hero { align-items: flex-start; }
+    .hero__rosette { left: 70%; top: 30%; width: 90vw; margin: -45vw 0 0 -45vw; }
+    .brand__name { font-size: 1rem; }
   }
-  @media (prefers-reduced-motion: reduce) { #art, .bar > i, .sw .chip i, button { transition: none; } }
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    *, *::before, *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; transition-delay: 0ms !important; }
+    .js .work__img { clip-path: none !important; }
+    .js .script > span, .js h1, .js .sub, .js .panel { transform: none !important; opacity: 1 !important; }
+  }
+  .reveal-all .work__img { clip-path: none !important; }
+  .reveal-all .script > span, .reveal-all h1, .reveal-all .sub, .reveal-all .panel { transform: none !important; opacity: 1 !important; }
 </style>
 </head>
 <body>
   <a class="skip" href="#main">Bỏ qua, đến nội dung chính</a>
-  <header class="top"><div class="page"><span class="site">Kiến trúc Khmer</span><span class="meta">Tác phẩm tương tác</span></div></header>
+
+  <header class="site-header" id="siteHeader">
+    <div class="site-header__bar">
+      <a href="#top" class="brand">
+        <span class="icon-box"><img src="icon.png" alt=""></span>
+        <span class="brand__name">Kiến Trúc <em>Khmer</em></span>
+      </a>
+      <a class="nav-link" href="https://catvang-frontend.vercel.app/" target="_blank" rel="noopener">Bảo tàng số</a>
+    </div>
+  </header>
 
   <main id="main">
-    <div class="page hero">
-      <figure class="work">
-        <div class="frame"><img id="art" src="artwork.jpg" alt="Mặt tiền một ngôi chùa Khmer: cầu thang đỏ hai bên có tượng thiên nữ và rắn naga mạ vàng, phía trên là mái tháp chạm khắc"></div>
-        <figcaption class="meta">Ảnh: kiến trúc chùa Khmer</figcaption>
-      </figure>
+    <section class="hero" id="hero">
+      <div class="hero__rosette" data-spin="0.05" aria-hidden="true"><img src="rosette.svg" alt="" width="400" height="400"></div>
 
-      <div>
-        <h1>Bức tranh chỉ hiện rõ khi nhiều người cùng nhìn</h1>
-        <p class="sub">Mỗi người đến nhìn vào màn hình sẽ làm bức tranh rõ nét và nhiều màu sắc hơn, không cần nhìn cùng lúc.</p>
+      <div class="hero__inner" id="top">
+        <figure class="work">
+          <div class="work__frame">
+            <div class="work__img"><img id="art" src="artwork.jpg" width="2000" height="1333" fetchpriority="high" alt="Mặt tiền một ngôi chùa Khmer: cầu thang đỏ hai bên có tượng thiên nữ và rắn naga mạ vàng, phía trên là mái tháp chạm khắc"></div>
+          </div>
+          <figcaption class="meta">Ảnh: kiến trúc chùa Khmer</figcaption>
+        </figure>
 
-        <div class="panel">
-          <p class="label">Độ rõ nét hiện tại</p>
-          <div class="percent"><span id="pct">0</span>%</div>
-          <div class="bar" id="barWrap" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-label="Mức độ rõ nét của bức tranh"><i id="bar"></i></div>
-          <div class="panel-foot">
-            <div class="foot-text">
-              <p class="note" id="msg" aria-live="polite">Đang bật camera…</p>
-              <button id="camBtn" hidden>Bật camera</button>
-              <!-- Nút reset chỉ hiện khi mở trang với ?admin -->
-              <button id="resetBtn" hidden>Đặt lại về 0%</button>
-            </div>
-            <!-- Khung nhỏ cho thấy camera đang nhận diện (ô xanh = đang nhìn vào màn hình) -->
-            <div class="cam" id="cam" hidden>
+        <div>
+          <p class="script" aria-hidden="true"><span>Rõ dần</span></p>
+          <h1>Bức tranh chỉ hiện rõ khi nhiều người cùng nhìn</h1>
+          <p class="sub">Mỗi người đến nhìn vào màn hình sẽ làm bức tranh rõ nét và nhiều màu sắc hơn, không cần nhìn cùng lúc.</p>
+
+          <div class="panel">
+            <p class="label">Độ rõ nét hiện tại</p>
+            <div class="percent"><span id="pct">0</span>%</div>
+            <div class="bar" id="barWrap" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-label="Mức độ rõ nét của bức tranh"><i id="bar"></i></div>
+            <div class="ticks" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+            <div class="panel-foot">
+              <div class="foot-text">
+                <p class="note" id="msg" aria-live="polite">Đang bật camera…</p>
+                <button class="btn btn--gold btn--pill" id="camBtn" hidden>Bật camera</button>
+                <!-- Nút reset chỉ hiện khi mở trang với ?admin -->
+                <button class="btn btn--line" id="resetBtn" hidden>Đặt lại về 0%</button>
+              </div>
+              <!-- Khung nhỏ cho thấy camera đang nhận diện (ô vàng = đang nhìn vào màn hình) -->
+              <div class="cam" id="cam" hidden>
                 <div class="cam-view" id="camView">
                   <video id="video" autoplay muted playsinline></video>
                   <canvas id="overlay"></canvas>
                 </div>
                 <span class="badge" id="badge">0 người</span>
               </div>
+            </div>
           </div>
         </div>
       </div>
-    </div>
-
-    <section class="how" aria-labelledby="how-h">
-      <div class="page">
-        <h2 id="how-h">Cách hoạt động</h2>
-        <ol>
-          <li><span class="step">1</span><p>Camera của máy tính đếm số người đang nhìn vào màn hình.</p></li>
-          <li><span class="step">2</span><p>Mỗi lượt có người đến nhìn, bức tranh rõ nét và nhiều màu hơn một chút. Không cần mọi người nhìn cùng lúc.</p></li>
-          <li><span class="step">3</span><p>Việc nhận diện chạy ngay trong trình duyệt. Hình từ camera không được lưu và không gửi đi đâu.</p></li>
-        </ol>
-      </div>
     </section>
+
+    <div class="ribbon" aria-hidden="true"><div class="ribbon__main"></div><div class="ribbon__thin"></div></div>
+
   </main>
 
-  <footer><div class="page meta">Cần cho phép truy cập camera để tranh phản ứng với người xem.</div></footer>
 
   <!-- Bảng số liệu để chỉnh độ nhạy: mở trang với ?debug -->
   <pre id="dbg" hidden></pre>
@@ -155,20 +214,25 @@
   const CAM_WIDTH = 1280, CAM_HEIGHT = 720; // độ phân giải yêu cầu; cao hơn giúp nhận ra người đứng xa (máy yếu có thể hạ về 640x480)
 
   // --- Bộ nhận diện khuôn mặt ---
-  const PREFER_SSD = true;        // true: dùng SsdMobilenetv1 (chính xác hơn) nếu có file model trong public/vendor/models, không có thì tự dùng TinyFaceDetector
+  const DETECTOR = 'auto';        // 'auto': tự chọn theo tốc độ máy (SSD nếu đủ nhanh, không thì Tiny) | 'ssd' | 'tiny'
   const SSD_MIN_CONF = 0.5;       // SSD: độ tin cậy tối thiểu
-  const INPUT_SIZE = 320;         // Tiny: cỡ ảnh đưa vào (128/160/192/224/320/416); lớn hơn nhận được người xa hơn nhưng chậm hơn
-  const MIN_SCORE = 0.35;         // Tiny: độ tin cậy tối thiểu; hạ xuống nếu bỏ sót người, nâng lên nếu nhận nhầm
+  const TINY_INPUT_SIZE = 512;    // Tiny: cỡ ảnh đưa vào (đo thử: 512 bắt đủ người hơn 320 rõ rệt, chậm hơn ~1,7 lần)
+  const TINY_SLOW_MS = 400;       // máy chạy Tiny một lần quá ngưỡng này thì tự hạ cỡ ảnh về 320 cho nhanh
+  const TINY_MIN_SCORE = 0.35;    // Tiny: độ tin cậy tối thiểu
+  const AUTO_TINY_MAX_MS = 80;     // auto: Tiny chạy một lần quá ngưỡng này (máy yếu) thì khỏi thử SSD, dùng Tiny luôn
+  const AUTO_SSD_MAX_MS = 220;    // auto: SSD phải chạy một lần trong ngưỡng này mới được chọn
+  const SSD_FALLBACK_MS = 450;    // đang dùng SSD mà trung bình mỗi lần quá ngưỡng này (máy nóng/chậm) thì tự chuyển sang Tiny
 
   // --- Lọc nhiễu theo thời gian ---
-  const ARRIVE_MS = 1200;         // phải thấy người trong phần lớn khoảng này mới tính là có người đến nhìn
+  const ARRIVE_MS = 1200;         // phải thấy người trong phần lớn khoảng này mới tính là có người đến nhìn (tự giãn ra trên máy chậm)
   const LEAVE_MS = 3000;          // mất dấu liên tục ngần này mới tính là người đã rời đi (chịu được lúc nhận diện chập chờn)
-  const MIN_FACE_RATIO = 0.04;    // mặt nhỏ hơn 4% bề ngang khung hình (người đứng quá xa) thì bỏ qua
+  const REENTRY_COOLDOWN_MS = 15000; // chống một người ra vào liên tục để tự làm đầy tranh: sau một lượt tính, người đầu tiên quay lại trong khoảng này không tính thêm. Đặt 0 để tắt
+  const MIN_FACE_RATIO = 0.05;    // mặt nhỏ hơn 5% bề ngang khung hình (người đứng quá xa, khoảng trên 2 m) thì bỏ qua
 
   // --- Hướng nhìn (chỉ tính người đang quay mặt về phía màn hình) ---
   const CHECK_GAZE = true;
   const YAW_MAX_OFFSET = 0.22;    // lệch trái/phải: 0 = nhìn thẳng; 0.22 ≈ quay đầu ~30°. Nới ra (0.28) nếu hay bỏ sót, siết lại (0.16) nếu tính nhầm người nhìn đi chỗ khác
-  const PITCH_MIN = 0.22, PITCH_MAX = 0.65; // ngẩng/cúi: vị trí mũi trên đoạn từ đường hai mắt xuống cằm (nhìn thẳng thường ≈ 0.35–0.45). Mở trang bằng ?debug để xem số thực tế rồi chỉnh
+  const PITCH_MIN = 0.18, PITCH_MAX = 0.65; // ngẩng/cúi: vị trí mũi trên đoạn từ đường hai mắt xuống cằm (nhìn thẳng thường ≈ 0.35–0.45). Mở trang bằng ?debug để xem số thực tế rồi chỉnh
   const ROLL_MAX_DEG = 30;        // nghiêng đầu quá góc này thì không tính
   const STORE_KEY = 'la_total';
 
@@ -188,13 +252,17 @@
 
   // ===== Hiển thị =====
   const chips = document.querySelectorAll('.sw .chip i');
+  const ticks = document.querySelectorAll('.ticks i');
   function render(count) {
     const p = Math.min(count / TARGET_VIEWERS, 1);
     art.style.filter = `blur(${(MAX_BLUR_PX * (1 - p)).toFixed(1)}px) grayscale(${(1 - p).toFixed(2)})`;
+    art.style.setProperty('--b', (MAX_BLUR_PX * (1 - p)).toFixed(1));  // phóng nhẹ ảnh khi còn mờ để mép không lộ viền
     const percent = Math.round(p * 100);
     pct.textContent = percent;
     bar.style.transform = 'scaleX(' + (percent / 100) + ')';
     barWrap.setAttribute('aria-valuenow', percent);
+    // Bốn mốc 25/50/75/100% sáng dần trên thanh tiến trình
+    ticks.forEach((t, i) => t.classList.toggle('on', percent >= (i + 1) * 25));
     // Mỗi ô màu hiện ra dần: ô 1 đủ màu ở 25%, ô 2 ở 50%, ô 3 ở 75%, ô 4 ở 100%
     chips.forEach((el, i) => el.style.setProperty('--on', Math.max(0, Math.min(1, p * 4 - i)).toFixed(2)));
   }
@@ -204,37 +272,52 @@
   let total = 0;            // tổng lượt người đã đến nhìn (chế độ accumulate)
   let stable = 0;           // số người đang nhìn, đã lọc nhiễu
   let samples = [];         // các lần nhận diện gần đây: { t, n }
+  let lastT = 0, gapMs = 0;   // thời điểm và khoảng cách trung bình giữa hai lần nhận diện (để tự thích nghi với máy chậm)
+  let lastArriveT = -Infinity; // lần cuối tính thêm một lượt khi trong khung đang trống
 
   try { total = Number(localStorage.getItem(STORE_KEY)) || 0; } catch (e) {}
   const save = () => { try { localStorage.setItem(STORE_KEY, String(total)); } catch (e) {} };
   const refresh = () => render(MODE === 'accumulate' ? total : stable);
   refresh();
 
-  function setStable(n) {
+  function setStable(n, now) {
     if (n === stable) return;
-    if (MODE === 'accumulate' && n > stable) { total += n - stable; save(); }  // có thêm người đến nhìn
+    if (MODE === 'accumulate' && n > stable) {   // có thêm người đến nhìn
+      let add = n - stable;
+      // Khung đang trống mà có người xuất hiện lại ngay sau một lượt vừa tính: coi là người cũ đi ra đi vào, không tính thêm
+      if (stable === 0 && now - lastArriveT < REENTRY_COOLDOWN_MS) add = n - 1;
+      if (add > 0) { total += add; lastArriveT = now; save(); }
+    }
     stable = n;
     badge.textContent = stable + ' người';
     refresh();
   }
 
   function onCount(n, now) {
+    if (lastT) {
+      const gap = Math.min(now - lastT, 10000);
+      gapMs = gapMs ? gapMs * 0.8 + gap * 0.2 : gap;
+    }
+    lastT = now;
+    // Cửa sổ thời gian tự giãn theo tốc độ máy: luôn chứa được ít nhất 2 lần nhận diện, kể cả khi mỗi lần mất vài giây
+    const arriveWin = Math.max(ARRIVE_MS, gapMs * 2.5);
+    const leaveWin = Math.max(LEAVE_MS, gapMs * 4);
     samples.push({ t: now, n });
-    while (samples.length && now - samples[0].t > LEAVE_MS) samples.shift();
+    while (samples.length && now - samples[0].t > leaveWin) samples.shift();
 
-    // Tăng: số người k xuất hiện ở >= 60% các lần nhận diện trong ARRIVE_MS gần nhất
-    const recent = samples.filter(s => now - s.t <= ARRIVE_MS);
+    // Tăng: số người k xuất hiện ở >= 60% các lần nhận diện trong cửa sổ gần nhất
+    const recent = samples.filter(s => now - s.t <= arriveWin);
     if (recent.length >= 2) {
       let up = 0;
       for (let k = stable + 1; k <= 20; k++) {
         if (recent.filter(s => s.n >= k).length >= 0.6 * recent.length) up = k; else break;
       }
-      if (up > stable) { setStable(up); return; }
+      if (up > stable) { setStable(up, now); return; }
     }
-    // Giảm: trong LEAVE_MS gần nhất không còn lần nào thấy đủ `stable` người
-    if (samples.length && now - samples[0].t >= LEAVE_MS - 400) {
+    // Giảm: trong cả cửa sổ rời đi không còn lần nào thấy đủ `stable` người
+    if (samples.length && now - samples[0].t >= leaveWin - Math.max(400, gapMs)) {
       const maxRecent = Math.max(...samples.map(s => s.n));
-      if (maxRecent < stable) setStable(maxRecent);
+      if (maxRecent < stable) setStable(maxRecent, now);
     }
   }
 
@@ -288,24 +371,64 @@
     ctx.lineWidth = Math.max(2, overlay.width / 160);
     dets.forEach((d, i) => {
       const b = d.detection.box;
-      ctx.strokeStyle = looking[i].ok ? '#4ade80' : '#9ca3af';
+      ctx.strokeStyle = looking[i].ok ? '#FFD680' : '#9ca3af';
       ctx.strokeRect(b.x, b.y, b.width, b.height);
     });
   }
 
-  let detectorOptions = null;
-  let detectorName = '';
+  // ===== Bộ nhận diện =====
   const fmt = v => (v >= 0 ? ' ' : '') + v.toFixed(2);
+  const detectors = {};     // { tiny: {name, opts}, ssd: {name, opts} }
+  let current = null;       // bộ đang dùng
+  let avgMs = 0;            // thời gian trung bình của một lần nhận diện
+
+  const makeTiny = size => ({ name: 'Tiny Face Detector (' + size + ')', opts: new faceapi.TinyFaceDetectorOptions({ inputSize: size, scoreThreshold: TINY_MIN_SCORE }) });
+  const MODEL_DIR = 'vendor/models';
+  const modelsReady = (async () => {
+    try { await faceapi.tf.ready(); } catch (e) {}
+    await faceapi.nets.faceLandmark68TinyNet.loadFromUri(MODEL_DIR);
+    await faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_DIR);   // luôn nạp Tiny làm phương án dự phòng
+    detectors.tiny = makeTiny(TINY_INPUT_SIZE);
+    if (DETECTOR !== 'tiny') {
+      try {
+        await faceapi.nets.ssdMobilenetv1.loadFromUri(MODEL_DIR);
+        detectors.ssd = { name: 'SSD MobileNet v1', opts: new faceapi.SsdMobilenetv1Options({ minConfidence: SSD_MIN_CONF }) };
+      } catch (e) {
+        console.info('Chưa có model SSD trong ' + MODEL_DIR + ', dùng Tiny Face Detector.');
+      }
+    }
+  })();
+
+  const timeIt = async d => { const t0 = performance.now(); await faceapi.detectAllFaces(video, d.opts).withFaceLandmarks(true); return performance.now() - t0; };
+
+  // Chọn bộ nhận diện theo tốc độ thật của máy này
+  async function chooseDetector() {
+    if (DETECTOR === 'ssd' && detectors.ssd) return detectors.ssd;
+    await timeIt(detectors.tiny);                                                   // lượt khởi động
+    const tinyMs = Math.min(await timeIt(detectors.tiny), await timeIt(detectors.tiny));
+    if (tinyMs > TINY_SLOW_MS && TINY_INPUT_SIZE > 320) detectors.tiny = makeTiny(320);  // máy chậm: hạ cỡ ảnh đầu vào
+    if (DETECTOR === 'tiny' || !detectors.ssd || tinyMs > AUTO_TINY_MAX_MS) return detectors.tiny;  // máy yếu: khỏi tốn công thử SSD
+    await timeIt(detectors.ssd);                                                    // khởi động SSD
+    const ssdMs = Math.min(await timeIt(detectors.ssd), await timeIt(detectors.ssd));
+    return ssdMs <= AUTO_SSD_MAX_MS ? detectors.ssd : detectors.tiny;
+  }
 
   async function detectLoop() {
     try {
-      if (video.readyState >= 2 && video.videoWidth && detectorOptions) {
-        const dets = await faceapi.detectAllFaces(video, detectorOptions).withFaceLandmarks(true);
+      if (video.readyState >= 2 && video.videoWidth && detectors.tiny) {
+        if (!current) current = await chooseDetector();
+        const t0 = performance.now();
+        const dets = await faceapi.detectAllFaces(video, current.opts).withFaceLandmarks(true);
+        const took = performance.now() - t0;
+        avgMs = avgMs ? avgMs * 0.85 + took * 0.15 : took;
+        // Đang dùng SSD mà máy chậm đi (nóng, chạy nhiều tab): tự lùi về Tiny
+        if (DETECTOR === 'auto' && current === detectors.ssd && avgMs > SSD_FALLBACK_MS) { current = detectors.tiny; avgMs = 0; }
         const looking = dets.map(isLooking);
         draw(dets, looking);
         onCount(looking.filter(r => r.ok).length, performance.now());
         if (DEBUG) {
-          const lines = ['Bộ nhận diện: ' + detectorName, 'Khuôn mặt: ' + dets.length + '  | đang nhìn: ' + looking.filter(r => r.ok).length];
+          const lines = ['Bộ nhận diện: ' + current.name, 'Mỗi lần nhận diện: ' + Math.round(avgMs) + ' ms (~' + (1000 / Math.max(avgMs + DETECT_INTERVAL_MS, 1)).toFixed(1) + ' lần/giây)',
+            'Khuôn mặt: ' + dets.length + '  | đang nhìn: ' + looking.filter(r => r.ok).length + '  | tổng lượt: ' + total];
           looking.forEach((r, i) => {
             lines.push(r.pose
               ? '#' + (i + 1) + ' yaw ' + fmt(r.pose.yaw) + '  pitch ' + r.pose.pitch.toFixed(2) + '  roll ' + fmt(r.pose.roll / 1) + '°  ' + (r.ok ? 'NHÌN' : '—')
@@ -321,27 +444,6 @@
 
   // ===== Camera =====
   let started = false;
-  const MODEL_DIR = 'vendor/models';
-  const modelsReady = (async () => {
-    try { await faceapi.tf.ready(); } catch (e) {}
-    await faceapi.nets.faceLandmark68TinyNet.loadFromUri(MODEL_DIR);
-    // Ưu tiên SSD (chính xác hơn); nếu chưa có file model thì dùng Tiny như trước
-    if (PREFER_SSD) {
-      try {
-        await faceapi.nets.ssdMobilenetv1.loadFromUri(MODEL_DIR);
-        detectorOptions = new faceapi.SsdMobilenetv1Options({ minConfidence: SSD_MIN_CONF });
-        detectorName = 'SSD MobileNet v1';
-      } catch (e) {
-        console.info('Chưa có model SSD trong ' + MODEL_DIR + ', dùng TinyFaceDetector.');
-      }
-    }
-    if (!detectorOptions) {
-      await faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_DIR);
-      detectorOptions = new faceapi.TinyFaceDetectorOptions({ inputSize: INPUT_SIZE, scoreThreshold: MIN_SCORE });
-      detectorName = 'Tiny Face Detector (' + INPUT_SIZE + ')';
-    }
-  })();
-
   async function startCamera() {
     camBtn.hidden = true;
     msg('Đang bật camera…');
@@ -379,6 +481,26 @@
 
   camBtn.addEventListener('click', startCamera);
   startCamera();
+</script>
+<script>
+  // Hiệu ứng giao diện (không liên quan tới phần nhận diện camera)
+  (() => {
+    const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const header = document.getElementById('siteHeader');
+    const onScroll = () => header.classList.toggle('is-scrolled', scrollY > 24);
+    onScroll(); addEventListener('scroll', onScroll, { passive: true });
+
+    // Chuỗi xuất hiện của hero: chờ ảnh tải xong (tối đa 1,2 giây)
+    const hero = document.getElementById('hero'), art = document.getElementById('art');
+    const go = () => requestAnimationFrame(() => requestAnimationFrame(() => hero.classList.add('is-ready')));
+    if (art.complete) go(); else { let done = false; const once = () => { if (!done) { done = true; go(); } };
+      art.addEventListener('load', once, { once: true }); art.addEventListener('error', once, { once: true }); setTimeout(once, 1200); }
+
+
+    // Hoa văn sen xoay thêm theo thanh cuộn
+    if (!reduce) { const spin = document.querySelector('[data-spin]'); let t = false;
+      addEventListener('scroll', () => { if (t) return; t = true; requestAnimationFrame(() => { t = false; spin.style.setProperty('--spin', (scrollY * parseFloat(spin.dataset.spin)).toFixed(1) + 'deg'); }); }, { passive: true }); }
+  })();
 </script>
 </body>
 </html>

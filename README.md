@@ -34,10 +34,20 @@ Tải model từ https://github.com/vladmandic/face-api/tree/master/model hai fi
 Nút Reset chỉ hiện khi mở `http://localhost:3000/?admin`.
 
 ## Thay ảnh
-Thay file `public/artwork.jpg` bằng ảnh của bạn (giữ đúng tên). Ảnh hiển thị tối đa ~1000px ngang.
+Thay file `public/artwork.jpg` bằng ảnh của bạn (giữ đúng tên). Nên dùng ảnh ngang tỉ lệ 3:2, rộng khoảng 2000px, dưới 1MB để trang tải nhanh.
+
+## Giao diện
+Cùng phong cách với web Bảo tàng số Kiến trúc Chùa Khmer, gồm một trang duy nhất. Các file hình dùng chung nằm trong `public/`: `icon.png` (logo) và `rosette.svg` (hoa văn sen xoay).
 
 ## Thư mục `public/vendor`
 Chứa thư viện nhận diện khuôn mặt [@vladmandic/face-api](https://github.com/vladmandic/face-api) (giấy phép MIT) và các model, để trang chạy được mà không cần tải thêm từ internet.
 
 ## Deploy miễn phí trên Render
 Runtime: Node | Build: `npm install` | Start: `npm start` | Instance: Free. Không cần biến môi trường nào.
+
+## Nhận diện người xem (bản nâng cấp)
+- **Hai bộ nhận diện:** `vendor/models` có cả Tiny Face Detector (nhẹ) và SSD MobileNet (chính xác hơn, nhận được người đứng xa hơn, nặng hơn). Mặc định `DETECTOR = 'auto'`: lúc mở trang, trang tự đo tốc độ máy rồi chọn bộ phù hợp. Máy mạnh dùng SSD, máy yếu dùng Tiny. Đang dùng SSD mà máy chậm đi thì tự lùi về Tiny.
+- **Thích nghi máy chậm:** các khoảng thời gian "người đến/người rời" tự giãn ra theo tốc độ nhận diện, nên máy chậm vẫn đếm được.
+- **Chống ra/vào để lách:** sau khi tính một lượt, nếu khung trống rồi cùng người đó quay lại trong `REENTRY_COOLDOWN_MS` (mặc định 15 giây) thì không tính thêm. Đặt về `0` để tắt. Lưu ý: không nhận diện danh tính nên đây chỉ làm chậm việc lách, không chặn tuyệt đối. Nơi đông khách nên giảm xuống 5–8 giây.
+- **Chỉnh nhanh** (đầu đoạn script trong `index.html`): `DETECTOR`, `MIN_FACE_RATIO` (mặc định 5%, tương đương khoảng 2 m), `PITCH_MIN`/`YAW_MAX_OFFSET` (độ nghiêng đầu cho phép).
+- Mở trang với `?debug` để xem bộ đang dùng, tốc độ mỗi lần nhận diện, số người và độ nghiêng đầu từng người.
